@@ -8,3 +8,4 @@ export { registerHost } from "./registration.js";
 export type { Provenance, RegisteredHost } from "./registration.js";
 export { hostsApi } from "./hosts.js";
 export type { HostEntry, HostRemoval, HostsApi } from "./hosts.js";
+export { userHomeOf } from "./user-home.js";
