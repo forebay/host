@@ -34,19 +34,19 @@ describe("threeStateList", () => {
 });
 
 describe("presentItems", () => {
-  it("marks detected and available items unavailable with an install action, and leaves installed ones alone", () => {
+  it("marks detected and available items unavailable and installable, and leaves installed ones alone", () => {
     const presented = presentItems([{ id: "i", state: "installed" }, { id: "d", state: "detected" }, { id: "a", state: "available" }, item("n")]);
     expect(presented).toEqual([
       { id: "i", state: "installed" },
-      { id: "d", state: "detected", unavailable: true, action: "install" },
-      { id: "a", state: "available", unavailable: true, action: "install" },
+      { id: "d", state: "detected", unavailable: true, install: true },
+      { id: "a", state: "available", unavailable: true, install: true },
       { id: "n" },
     ]);
   });
 
-  it("replaces an action a detected row carried with install, since an unusable row offers only that", () => {
-    expect(presentItems([{ id: "d", state: "detected", values: {} , ...{ action: "open" } } as never])).toEqual([
-      { id: "d", state: "detected", values: {}, action: "install", unavailable: true },
+  it("drops an action a detected row carried, since an unusable row offers only install", () => {
+    expect(presentItems([{ id: "d", state: "detected", values: {}, ...{ action: "open" } } as never])).toEqual([
+      { id: "d", state: "detected", values: {}, install: true, unavailable: true },
     ]);
   });
 });
@@ -71,18 +71,18 @@ describe("renderPluginList", () => {
     return { screen, items: (screen.nodes[0].data as { items: Array<Record<string, unknown>> }).items };
   }
 
-  it("shows a bundled, not enabled plugin that a detector finds as a detected row with an install action", async () => {
+  it("shows a bundled, not enabled plugin that a detector finds as a detected, installable row", async () => {
     const { screen, items } = await plugins(true);
     expect(screen.kind).toBe("host");
     expect(screen).not.toHaveProperty("plugin");
     expect(screen.nodes).toHaveLength(1);
     expect(screen.nodes[0]).toMatchObject({ component: "table", state: "ready" });
-    expect(items.find((row) => row.id === "greeter")).toMatchObject({ state: "detected", unavailable: true, action: "install" });
+    expect(items.find((row) => row.id === "greeter")).toMatchObject({ state: "detected", unavailable: true, install: true });
     expect(items.find((row) => row.id === "viewer")).not.toHaveProperty("unavailable");
   });
 
   it("shows the same plugin as available when no detector finds it", async () => {
     const { items } = await plugins(false);
-    expect(items.find((row) => row.id === "greeter")).toMatchObject({ state: "available", unavailable: true, action: "install" });
+    expect(items.find((row) => row.id === "greeter")).toMatchObject({ state: "available", unavailable: true, install: true });
   });
 });

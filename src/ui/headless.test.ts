@@ -140,6 +140,6 @@ describe("renderHeadless", () => {
 describe("renderHeadless item presentation", () => {
   it.each(["asList", "asTable", "asTree"])("gives a plugin's own detected row the unavailable treatment in %s", async (nodeId) => {
     const screen = await render("families");
-    expect(node(screen, nodeId).data).toEqual({ items: [{ id: "x", state: "detected", unavailable: true, action: "install" }] });
+    expect(node(screen, nodeId).data).toEqual({ items: [{ id: "x", state: "detected", unavailable: true, install: true }] });
   });
 });

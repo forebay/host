@@ -8,7 +8,8 @@ export interface Detector {
   detect(): boolean;
 }
 
-export type PresentedItem = UiItem & { unavailable?: true; action?: "install" };
+/** @implNote `install` is its own member, so it can never be read as one of the plugin's action ids. */
+export type PresentedItem = UiItem & { unavailable?: true; install?: true };
 
 const STATE_ORDER = ["installed", "detected", "available"] as const;
 
@@ -51,9 +52,18 @@ export function pluginList(running: RunningHost, detectors: Detector[]): UiItem[
   return threeStateList(asItems(installed), asItems(detected), asItems(available));
 }
 
-/** @implNote A row that cannot be used offers only install, so an `action` it carried is replaced by design. */
+function isUnusable(entry: UiItem): boolean {
+  return entry.state === "detected" || entry.state === "available";
+}
+
+function asInstallable(entry: UiItem): PresentedItem {
+  const { action: _dropped, ...rest } = entry as UiItem & { action?: unknown };
+  return { ...rest, unavailable: true, install: true };
+}
+
+/** @implNote A row that cannot be used offers only install, so an `action` it carried is dropped by design. */
 export function presentItems(items: UiItem[]): PresentedItem[] {
-  return items.map((entry) => (entry.state === "detected" || entry.state === "available" ? { ...entry, unavailable: true, action: "install" } : entry));
+  return items.map((entry) => (isUnusable(entry) ? asInstallable(entry) : entry));
 }
 
 /**
