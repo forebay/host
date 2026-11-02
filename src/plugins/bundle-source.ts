@@ -3,11 +3,11 @@ import { join } from "node:path";
 import { readManifestFileOrNull } from "./manifest-file.js";
 
 const MANIFEST_FILE = "plugin.json";
-const UNDECLARED_VERSION = "0.0.0";
 
 export interface BundleEntry {
   id: string;
-  version: string;
+  /** Null when plugin.json declares no `version`, which the scan refuses rather than inventing one. */
+  version: string | null;
   manifestPath: string;
   entryPath: string | null;
 }
@@ -34,9 +34,8 @@ function entryPathOf(folder: string, entry: unknown): string | null {
   return existsSync(entryPath) ? entryPath : null;
 }
 
-/** @implNote A manifest that declares no `version` reads as 0.0.0, so it still lists and only a pin can refuse it. */
-function versionOf(version: unknown): string {
-  return typeof version === "string" && version !== "" ? version : UNDECLARED_VERSION;
+function versionOf(version: unknown): string | null {
+  return typeof version === "string" && version !== "" ? version : null;
 }
 
 function locateIn(root: string, id: string): BundleEntry | null {

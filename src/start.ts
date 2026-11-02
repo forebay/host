@@ -5,6 +5,7 @@ import type { PluginManifest } from "@weivel/typescript";
 import { buildRuntime } from "./context/build.js";
 import type { HostPlaces } from "./context/places.js";
 import { reconcileSecretsInBackground } from "./context/reconcile.js";
+import type { ReconcileAnswer } from "./context/reconcile-worker.js";
 import { eventBus } from "./event-bus.js";
 import { hostsApi } from "./hosts.js";
 import type { HostsApi } from "./hosts.js";
@@ -17,6 +18,8 @@ import { registerHost } from "./registration.js";
 import type { Provenance } from "./registration.js";
 import { openRuntime } from "./runtime/open.js";
 import type { Runtime, RuntimeSource } from "./runtime/open.js";
+import { trackReconcile } from "./reconcile-tracker.js";
+import type { ReconcileTracker } from "./reconcile-tracker.js";
 import { statusOf } from "./status.js";
 import type { HostStatus } from "./status.js";
 import { userHomeOf } from "./user-home.js";
@@ -40,12 +43,16 @@ export interface RunningHost {
   stop(): Promise<void>;
 }
 
-/** What `startHost` reaches the engine through, replaced in tests. */
+/** What `startHost` reaches the engine and the secrets worker through, replaced in tests. */
 export interface HostEngine {
   startPlugins(options: PluginHostOptions): Promise<LoadedHost>;
+  reconcileSecrets(source: RuntimeSource, places: HostPlaces, signal: AbortSignal): Promise<ReconcileAnswer>;
 }
 
-const ENGINE: HostEngine = { startPlugins };
+const ENGINE: HostEngine = {
+  startPlugins,
+  reconcileSecrets: (source, places, signal) => reconcileSecretsInBackground(source, places, undefined, signal),
+};
 
 function processEnvironment(): Record<string, string> {
   return Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
@@ -64,6 +71,7 @@ function selectionOf(runtime: Runtime, places: HostPlaces, options: HostOptions)
   return selectPlugins(settings, options.bundles, options.consumes ?? [], options.defaults ?? {});
 }
 
+/** @implNote `pluginDir` is required by the engine but never read, because the `scan` built from the bundle source replaces it. */
 function pluginHostOptions(runtime: Runtime, places: HostPlaces, options: HostOptions, selection: PluginSelection): PluginHostOptions {
   const wellKnownServices = wellKnownServicesOf(options.consumes ?? [], options.defaults ?? {});
   const bus = eventBus();
@@ -79,12 +87,13 @@ function pluginHostOptions(runtime: Runtime, places: HostPlaces, options: HostOp
   };
 }
 
-/** Stops the plugins before the runtime they call into closes, once however often it is called. */
-function stopper(loaded: LoadedHost, runtime: Runtime): () => Promise<void> {
+/** Stops the plugins, then the reconcile worker, before the runtime they call into closes, once however often it is called. */
+function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, runtime: Runtime): () => Promise<void> {
   let stopping: Promise<void> | null = null;
   const stopOnce = async () => {
     try {
       await loaded.stop();
+      await reconcile.stop();
     } finally {
       runtime.close();
     }
@@ -92,20 +101,31 @@ function stopper(loaded: LoadedHost, runtime: Runtime): () => Promise<void> {
   return () => (stopping ??= stopOnce());
 }
 
-async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngine): Promise<RunningHost> {
-  const environment = options.environment ?? processEnvironment();
-  const places = runtime.places.resolve({ home: userHomeOf(environment), environment });
-  void reconcileSecretsInBackground(options.runtime, places);
+async function loadPlugins(runtime: Runtime, places: HostPlaces, options: HostOptions, engine: HostEngine, environment: Record<string, string>) {
   registerHost(runtime, places, options.identity, options.provenance, environment);
   const selection = selectionOf(runtime, places, options);
   const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection));
-  return {
-    loaded,
-    places,
-    hosts: hostsApi(runtime, places, environment),
-    status: () => statusOf(options.identity.id, loaded, selection.missing),
-    stop: stopper(loaded, runtime),
-  };
+  return { selection, loaded };
+}
+
+/** @implNote A start that throws stops the reconcile worker too, since no `stop` exists yet to reach it. */
+async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngine): Promise<RunningHost> {
+  const environment = options.environment ?? processEnvironment();
+  const places = runtime.places.resolve({ home: userHomeOf(environment), environment });
+  const reconcile = trackReconcile((signal) => engine.reconcileSecrets(options.runtime, places, signal));
+  try {
+    const { selection, loaded } = await loadPlugins(runtime, places, options, engine, environment);
+    return {
+      loaded,
+      places,
+      hosts: hostsApi(runtime, places, environment),
+      status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome()),
+      stop: stopper(loaded, reconcile, runtime),
+    };
+  } catch (error) {
+    await reconcile.stop();
+    throw error;
+  }
 }
 
 /**
@@ -115,10 +135,10 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
  * @implNote The runtime is closed again when anything before the plugins start throws, since no
  * `stop` exists yet to close it.
  */
-export async function startHost(options: HostOptions, engine: HostEngine = ENGINE): Promise<RunningHost> {
+export async function startHost(options: HostOptions, engine: Partial<HostEngine> = {}): Promise<RunningHost> {
   const runtime = openRuntime(options.runtime);
   try {
-    return await startOn(runtime, options, engine);
+    return await startOn(runtime, options, { ...ENGINE, ...engine });
   } catch (error) {
     runtime.close();
     throw error;

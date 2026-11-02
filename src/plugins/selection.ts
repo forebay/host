@@ -1,6 +1,6 @@
 import type { BundleEntry, BundleSource } from "./bundle-source.js";
 import { withDefaults } from "./defaults.js";
-import { enabledPlugins } from "./enabled.js";
+import { disabledPlugins, enabledPlugins, pinnedVersions } from "./enabled.js";
 import { resolveEnabled } from "./resolve.js";
 import type { MissingPlugin } from "./resolve.js";
 
@@ -9,21 +9,27 @@ export interface PluginSelection {
   missing: MissingPlugin[];
 }
 
-/** The bundles to start: the enabled ones the source holds at their pins, then the host's defaults for what they leave unprovided. */
+function pinnedChoice(id: string, pins: Record<string, string>): { id: string; pin?: string } {
+  return Object.hasOwn(pins, id) ? { id, pin: pins[id] } : { id };
+}
+
+/**
+ * The bundles to start: the enabled ones the source holds at their pins, then the host's defaults
+ * for what they leave unprovided, each default held to its own pin the same way.
+ */
 export function selectPlugins(
   settings: Record<string, unknown>,
   source: BundleSource,
   consumes: string[],
   defaults: Record<string, string>,
 ): PluginSelection {
-  const { found, missing } = resolveEnabled(enabledPlugins(settings), source);
-  const chosen = withDefaults(
-    found.map((entry) => entry.id),
-    source,
-    consumes,
-    defaults,
-  );
-  const byId = new Map(found.map((entry) => [entry.id, entry]));
-  const bundles = chosen.flatMap((id) => byId.get(id) ?? source.locate(id) ?? []);
-  return { bundles, missing };
+  const enabled = resolveEnabled(enabledPlugins(settings), source);
+  const enabledIds = enabled.found.map((entry) => entry.id);
+  const added = withDefaults(enabledIds, source, consumes, defaults, disabledPlugins(settings)).slice(enabledIds.length);
+  const pins = pinnedVersions(settings);
+  const fromDefaults = resolveEnabled(added.map((id) => pinnedChoice(id, pins)), source);
+  return {
+    bundles: [...enabled.found, ...fromDefaults.found],
+    missing: [...enabled.missing, ...fromDefaults.missing],
+  };
 }

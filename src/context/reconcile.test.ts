@@ -44,6 +44,15 @@ describe("reconcileSecretsInBackground", () => {
     expect(order).toEqual(["timer", "resolved"]);
   });
 
+  it("terminates the worker and answers failed once its signal aborts", async () => {
+    const stalled = join(fixture.base, "stalled-worker.mjs");
+    writeFileSync(stalled, "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000);");
+    const controller = new AbortController();
+    const answer = reconcileSecretsInBackground(fixture.source, fixture.places, pathToFileURL(stalled), controller.signal);
+    controller.abort();
+    expect(await answer).toEqual({ failed: "the host stopped before the reconcile finished" });
+  });
+
   it("answers failed rather than rejecting when the worker cannot start", async () => {
     const answer = await reconcileSecretsInBackground(fixture.source, fixture.places, pathToFileURL(join(fixture.base, "missing.js")));
     expect(answer).toHaveProperty("failed");
