@@ -1,0 +1,20 @@
+name: Test
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: intisy/workflows/.github/workflows/test.yml@main
+    with:
+      toolchains: node cmake
+      runners: '["ubuntu-latest","windows-latest","macos-latest"]'
+      extra_repositories: |
+        weivel/model siblings/model 606988fb178b04d3f53835e6d982c09f31081ef1
+        weivel/typescript siblings/typescript d22c7f86cea46e4da969daf411132e91ae4bad2a
+        spisor/library siblings/library 0f0def8c6a0e45f9af2d4f3a2d3459c28ab36e27
+      node_install: npm ci --prefix siblings/model && npm ci --prefix siblings/typescript && npm ci
+      node_build: cmake -S siblings/library -B siblings/library/build && cmake --build siblings/library/build --config Release && npm run build --prefix siblings/typescript && npm run build
+      node_test: npm test

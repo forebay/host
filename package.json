@@ -1,0 +1,33 @@
+{
+  "name": "@forebay/host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared host every application is built from, for the forebay AI-proxy ecosystem.",
+  "main": "dist/index.js",
+  "type": "module",
+  "license": "MIT",
+  "author": "intisy",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forebay/host.git"
+  },
+  "keywords": ["forebay", "ai-proxy", "ai", "llm", "core-library", "typescript"],
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "generate:runtime-types": "node scripts/generate-runtime-types.mjs",
+    "test": "tsc --noEmit -p tsconfig.json && vitest run"
+  },
+  "dependencies": {
+    "@weivel/typescript": "file:./siblings/typescript"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
+    "vitest": "3.2.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
