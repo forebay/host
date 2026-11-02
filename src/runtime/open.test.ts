@@ -50,6 +50,6 @@ describe("the runtime library", () => {
   it("closes twice without throwing", () => {
     const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
     runtime.close();
-    expect(() => runtime.close()).not.toThrow(/registry\.get: the argument carries no usable host id[\s\S]*fix: send/);
+    expect(() => runtime.close()).not.toThrow();
   });
 });
