@@ -62,6 +62,22 @@ describe("pluginList", () => {
   });
 });
 
+describe("pluginList detection", () => {
+  it("counts a detector that throws as not detected and still lists the rest", async () => {
+    fixture = await startFixtureHost(["viewer"]);
+    const throwing = {
+      id: "greeter",
+      detect: () => {
+        throw new Error("the registry could not be read");
+      },
+    };
+    const list = pluginList(fixture.running, [throwing, { id: "rival", detect: () => true }]);
+    const states = Object.fromEntries(list.map(({ id, state }) => [id, state]));
+    expect(states.greeter).toBe("available");
+    expect(states.rival).toBe("detected");
+  });
+});
+
 describe("renderPluginList", () => {
   async function plugins(detected: boolean) {
     fixture = await startFixtureHost(["viewer"]);

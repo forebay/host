@@ -45,9 +45,18 @@ function asItems(ids: string[]): UiItem[] {
   return ids.map((id) => ({ id }));
 }
 
+/** @implNote A detector that throws could not say the thing is here, so it counts as not detected rather than failing the list. */
+function detects(detector: Detector): boolean {
+  try {
+    return detector.detect();
+  } catch {
+    return false;
+  }
+}
+
 export function pluginList(running: RunningHost, detectors: Detector[]): UiItem[] {
   const installed = installedIds(running);
-  const detected = detectors.filter((detector) => detector.detect()).map(({ id }) => id);
+  const detected = detectors.filter(detects).map(({ id }) => id);
   const available = running.bundles.list().map(({ id }) => id);
   return threeStateList(asItems(installed), asItems(detected), asItems(available));
 }
