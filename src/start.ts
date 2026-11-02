@@ -8,6 +8,8 @@ import type { HostPlaces } from "./context/places.js";
 import { reconcileSecretsInBackground } from "./context/reconcile.js";
 import type { ReconcileAnswer } from "./context/reconcile-worker.js";
 import { eventBus } from "./event-bus.js";
+import { hostSettings } from "./host-settings.js";
+import type { HostSettings } from "./host-settings.js";
 import { hostsApi } from "./hosts.js";
 import type { HostsApi } from "./hosts.js";
 import type { HostIdentity } from "./identity.js";
@@ -43,6 +45,7 @@ export interface RunningHost {
   hosts: HostsApi;
   /** The bus every plugin of this host publishes to, activity on `ACTIVITY_TOPIC` included. */
   events: RuntimeEvents;
+  settings: HostSettings;
   status(): HostStatus;
   stop(): Promise<void>;
 }
@@ -71,7 +74,7 @@ function wellKnownServicesOf(consumes: readonly string[], defaults: Record<strin
 }
 
 function selectionOf(runtime: Runtime, places: HostPlaces, options: HostOptions): PluginSelection {
-  const settings = runtime.settings.all({ home: options.identity.home, portable: places.portable }).values;
+  const settings = hostSettings(runtime, places, options.identity).all();
   return selectPlugins(settings, options.bundles, options.consumes ?? [], options.defaults ?? {});
 }
 
@@ -135,6 +138,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
       bundles: options.bundles,
       hosts: hostsApi(runtime, places, environment),
       events: bus,
+      settings: hostSettings(runtime, places, options.identity),
       status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome()),
       stop: stopper(loaded, reconcile, runtime),
     };

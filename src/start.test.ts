@@ -197,6 +197,15 @@ describe("startHost", () => {
     expect(heard).toEqual([{ source: "announcer", kind: "log.error", detail: { message: "spoken" } }]);
   });
 
+  it("reads and writes the host's settings through the runtime it already holds", async () => {
+    writeSettings([{ key: "theme", value: "dark", layer: "portable" }]);
+    const host = await started();
+    expect(host.settings.all().theme).toBe("dark");
+    host.settings.set("theme", "light", "application");
+    host.settings.set("density", "compact");
+    expect(host.settings.all()).toMatchObject({ theme: "light", density: "compact" });
+  });
+
   it("stops twice without failing", async () => {
     enable("a");
     const host = await started();
