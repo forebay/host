@@ -167,6 +167,24 @@ describe("startHost", () => {
     expect(signals[0].aborted).toBe(true);
   });
 
+  it("still stops the reconcile worker when stopping the plugins throws", async () => {
+    const signals: AbortSignal[] = [];
+    const host = await startHost(options(), {
+      startPlugins: async (given) => ({
+        ...(await startPlugins(given)),
+        stop: async () => {
+          throw new Error("a plugin refused to stop");
+        },
+      }),
+      reconcileSecrets: (_source, _places, signal) => {
+        signals.push(signal);
+        return new Promise((resolve) => signal.addEventListener("abort", () => resolve({ failed: "stopped" })));
+      },
+    });
+    await expect(host.stop()).rejects.toThrow("a plugin refused to stop");
+    expect(signals[0].aborted).toBe(true);
+  });
+
   it("stops twice without failing", async () => {
     enable("a");
     const host = await started();
