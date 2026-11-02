@@ -20,7 +20,7 @@ export type { EnabledPlugin } from "./plugins/enabled.js";
 export { withDefaults } from "./plugins/defaults.js";
 export { startHost } from "./start.js";
 export type { HostEngine, HostOptions, RunningHost } from "./start.js";
-export type { HostStatus } from "./status.js";
+export type { HostStatus, StatusRefusal } from "./status.js";
 export { mergeNavigation } from "./ui/navigation.js";
 export type { Navigation, NavigationEntry } from "./ui/navigation.js";
 export { settingsView } from "./ui/settings-view.js";
