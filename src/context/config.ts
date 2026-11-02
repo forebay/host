@@ -5,12 +5,18 @@ import type { ActivityPublisher } from "./activity.js";
 import type { HostPlaces } from "./places.js";
 import { scopeOf } from "./scope.js";
 
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/** True only when a JSON round trip hands back exactly what was put in. */
 function carriesAsJson(value: unknown): boolean {
-  try {
-    return JSON.stringify(value) !== undefined;
-  } catch {
-    return false;
-  }
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(carriesAsJson);
+  if (typeof value === "object") return isPlainObject(value) && Object.values(value).every(carriesAsJson);
+  return false;
 }
 
 /** A declared setting goes where its manifest says (portable by default); anything undeclared stays in the application. */

@@ -12,7 +12,7 @@ beforeEach(() => {
 afterEach(() => fixture.dispose());
 
 const manifest = manifestOf("alpha", {
-  settings: { shared: { type: "text", label: "Shared", layer: "portable" }, local: { type: "text", label: "Local", layer: "application" } },
+  settings: { plain: { type: "text", label: "Plain" }, shared: { type: "text", label: "Shared", layer: "portable" }, local: { type: "text", label: "Local", layer: "application" } },
 });
 
 function configOf() {
@@ -27,6 +27,12 @@ describe("config layers", () => {
   it("writes a declared portable setting without a layer into the portable plugin folder", async () => {
     await configOf().set("shared", "v");
     expect(JSON.parse(readFileSync(portableFile(), "utf8"))).toEqual({ shared: "v" });
+  });
+
+  it("writes a declared setting with no layer to the portable file, not the application one", async () => {
+    await configOf().set("plain", "v");
+    expect(JSON.parse(readFileSync(portableFile(), "utf8"))).toEqual({ plain: "v" });
+    expect(existsSync(join(fixture.host.home, "config", "alpha.json"))).toBe(false);
   });
 
   it("writes an undeclared key without a layer into the application config file", async () => {
@@ -46,6 +52,18 @@ describe("config layers", () => {
     await expect(configOf().set("shared", undefined)).rejects.toThrow(/cannot be carried as JSON/);
     expect(existsSync(portableFile())).toBe(false);
     expect(fixture.activity).toEqual([]);
+  });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["a nested function", { inner: { call: () => 1 } }],
+    ["a nested undefined", { inner: [1, undefined] }],
+    ["a bigint", 1n],
+    ["a Date", new Date(0)],
+  ])("refuses %s and writes nothing", async (_label, value) => {
+    await expect(configOf().set("local", value)).rejects.toThrow(/cannot be carried as JSON/);
+    expect(existsSync(join(fixture.host.home, "config", "alpha.json"))).toBe(false);
   });
 
   it("publishes activity with the key, the previous value and the new one", async () => {

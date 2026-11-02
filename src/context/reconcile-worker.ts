@@ -6,8 +6,6 @@ import type { HostPlaces } from "./places.js";
 export interface ReconcileRequest {
   source: RuntimeSource;
   places: HostPlaces;
-  /** Test seam: the worker waits this long before reconciling, so the caller's thread is provably free meanwhile. */
-  delayMilliseconds?: number;
 }
 
 export type ReconcileAnswer = { moved: number } | { failed: string };
@@ -21,13 +19,8 @@ function reconcile({ source, places }: ReconcileRequest): ReconcileAnswer {
   }
 }
 
-function pause(milliseconds: number): void {
-  if (milliseconds > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
-
 function run(request: ReconcileRequest): void {
   try {
-    pause(request.delayMilliseconds ?? 0);
     parentPort?.postMessage(reconcile(request));
   } catch (cause) {
     parentPort?.postMessage({ failed: cause instanceof Error ? cause.message : String(cause) });
