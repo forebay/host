@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Scheduler } from "@weivel/typescript";
 import { startPlugins } from "@weivel/typescript/host";
 import { compileFixtureBundles } from "./bundles.js";
-import { REPOSITORY_ROOT } from "../context/fixture.js";
+import { REPOSITORY_ROOT } from "./context.js";
 import type { HostIdentity } from "../identity.js";
 import { directoryBundles } from "../plugins/bundle-source.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";

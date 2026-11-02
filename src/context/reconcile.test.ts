@@ -3,8 +3,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createFixture, REPOSITORY_ROOT } from "./fixture.js";
-import type { Fixture } from "./fixture.js";
+import { createFixture, REPOSITORY_ROOT } from "../__fixtures__/context.js";
+import type { Fixture } from "../__fixtures__/context.js";
 import { reconcileSecretsInBackground } from "./reconcile.js";
 
 let fixture: Fixture;

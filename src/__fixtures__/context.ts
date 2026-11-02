@@ -6,7 +6,7 @@ import type { RuntimeEvents } from "@weivel/typescript/engine";
 import type { HostIdentity } from "../identity.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
 import type { Runtime, RuntimeSource } from "../runtime/open.js";
-import type { HostPlaces } from "./places.js";
+import type { HostPlaces } from "../context/places.js";
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, "..", "..");
 

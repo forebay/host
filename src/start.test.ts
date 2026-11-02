@@ -5,7 +5,7 @@ import { startPlugins } from "@weivel/typescript/host";
 import type { PluginHostOptions } from "@weivel/typescript/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compileFixtureBundles } from "./__fixtures__/bundles.js";
-import { REPOSITORY_ROOT } from "./context/fixture.js";
+import { REPOSITORY_ROOT } from "./__fixtures__/context.js";
 import type { HostIdentity } from "./identity.js";
 import { directoryBundles } from "./plugins/bundle-source.js";
 import { openRuntime, siblingRuntime } from "./runtime/open.js";
