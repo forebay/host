@@ -27,7 +27,7 @@ export interface Runtime {
   log: LogService;
   secrets: Pick<SecretsService, "get" | "set" | "delete" | "reconcile">;
   registry: RegistryService;
-  changes: Pick<ChangesService, "reverse">;
+  changes: Pick<ChangesService, "apply" | "reverse">;
   commands: CommandsService;
   close(): void;
 }

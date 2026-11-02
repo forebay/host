@@ -4,3 +4,7 @@ export { buildRuntime } from "./context/build.js";
 export { reconcileSecretsInBackground } from "./context/reconcile.js";
 export type { HostPlaces } from "./context/places.js";
 export type { HostIdentity } from "./identity.js";
+export { registerHost } from "./registration.js";
+export type { Provenance, RegisteredHost } from "./registration.js";
+export { hostsApi } from "./hosts.js";
+export type { HostEntry, HostRemoval, HostsApi } from "./hosts.js";
