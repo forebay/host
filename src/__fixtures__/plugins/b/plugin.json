@@ -1,0 +1,7 @@
+{
+  "id": "b",
+  "api": 1,
+  "version": "1.0.0",
+  "entry": "index.js",
+  "services": { "consumes": [{ "id": "demo:greeting", "optional": false }] }
+}
