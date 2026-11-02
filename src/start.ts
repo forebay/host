@@ -58,7 +58,7 @@ export interface HostEngine {
 
 const ENGINE: HostEngine = {
   startPlugins,
-  reconcileSecrets: (source, places, signal) => reconcileSecretsInBackground(source, places, undefined, signal),
+  reconcileSecrets: reconcileSecretsInBackground,
 };
 
 function processEnvironment(): Record<string, string> {
