@@ -1,7 +1,7 @@
-import { homedir } from "node:os";
 import type { HostIdentity } from "./identity.js";
 import type { HostPlaces } from "./context/places.js";
 import type { Runtime } from "./runtime/open.js";
+import { userHomeOf } from "./user-home.js";
 
 export type Provenance = {
   method: string;
@@ -24,10 +24,6 @@ function storedProvenance(runtime: Runtime, places: HostPlaces, id: string): Pro
 /** The first start's provenance wins, so a later start never rewrites how the host was installed. */
 function provenanceToRecord(runtime: Runtime, places: HostPlaces, id: string, given: Provenance): Provenance {
   return storedProvenance(runtime, places, id) ?? given;
-}
-
-function userHome(environment: Record<string, string>): string {
-  return environment.HOME ?? environment.USERPROFILE ?? homedir();
 }
 
 function recordRegistration(runtime: Runtime, places: HostPlaces, identity: HostIdentity, provenance: Provenance): void {
@@ -57,7 +53,7 @@ function requestCommands(
       places,
       environment,
       host: identity.id,
-      home: userHome(environment),
+      home: userHomeOf(environment),
       name: command.name,
       target: command.target,
     });
@@ -66,6 +62,11 @@ function requestCommands(
   return names;
 }
 
+/**
+ * @implNote Known limit: the first-start-wins provenance is a read followed by a write, so two
+ * concurrent first starts of one host can each see no registration and the last write wins.
+ * An environment without a user home is refused before anything is registered.
+ */
 export function registerHost(
   runtime: Runtime,
   places: HostPlaces,
@@ -73,6 +74,7 @@ export function registerHost(
   provenance: Provenance,
   environment: Record<string, string>,
 ): RegisteredHost {
+  if (identity.commands.length > 0) userHomeOf(environment);
   const recorded = provenanceToRecord(runtime, places, identity.id, provenance);
   recordRegistration(runtime, places, identity, recorded);
   return { provenance: recorded, commands: requestCommands(runtime, places, identity, environment) };

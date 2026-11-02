@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFixture } from "./context/fixture.js";
+import { userPathEntriesUnder } from "./context/user-path.js";
 import type { Fixture } from "./context/fixture.js";
 import { hostsApi } from "./hosts.js";
 import { registerHost } from "./registration.js";
@@ -19,7 +20,14 @@ beforeEach(() => {
   environment = { PATH: join(fixture.base, "path"), HOME: userHome, USERPROFILE: userHome, SHELL: "/bin/sh" };
 });
 
-afterEach(() => fixture.dispose());
+afterEach(() => {
+  try {
+    fixture.runtime.changes.reverse({ places: fixture.places, host: fixture.host.id });
+    expect(userPathEntriesUnder(fixture.base)).toEqual([]);
+  } finally {
+    fixture.dispose();
+  }
+});
 
 function provenanceAt(location: string): Provenance {
   return { method: "npm", version: "1.0.0", location, os: "linux", architecture: "x64", installedAt: "2026-01-01T00:00:00Z" };
@@ -75,6 +83,6 @@ describe("hostsApi", () => {
     expect(api.renameCommand(fixture.host.id, "tool", "tool-renamed")).toBe("tool-renamed");
     api.deleteCommand(fixture.host.id, "tool-renamed");
     const commands = fixture.runtime.registry.get({ places: fixture.places, id: fixture.host.id }).registration?.commands as Array<{ name: string; state: string }>;
-    expect(commands.filter((command) => command.state !== "deleted" && command.name === "tool-renamed")).toEqual([]);
+    expect(commands.find((command) => command.name === "tool-renamed")?.state).toBe("deleted");
   });
 });
