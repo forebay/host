@@ -1,5 +1,7 @@
 import type { PluginManifest, UiComponent, UiNode, ViewDeclaration } from "@weivel/typescript";
 import { checkUiData } from "@weivel/typescript/host";
+import type { UiItem } from "@weivel/typescript/host";
+import { presentItems } from "../lists.js";
 import type { RunningHost } from "../start.js";
 import { bindingTarget, deployedManifest } from "./binding-target.js";
 import { callBinding } from "./bindings.js";
@@ -26,7 +28,7 @@ export interface HeadlessNode {
 
 export interface HeadlessScreen {
   plugin: string;
-  kind: "view" | "settings";
+  kind: "view" | "settings" | "host";
   /** The declared view id; absent for the generated settings screen, which is addressed by its kind. */
   view?: string;
   title: string;
@@ -73,11 +75,18 @@ function chartData(node: UiNode, answer: Record<string, unknown>): Outcome {
   return { state: "ready", data: Object.fromEntries(members.map((member) => [member, answer[member]])) };
 }
 
+const ITEMS_FAMILY: ReadonlySet<UiComponent> = new Set(["list", "table", "tree"]);
+
+function presentedAnswer(answer: unknown): unknown {
+  const { items } = answer as { items: UiItem[] };
+  return { ...(answer as object), items: presentItems(items) };
+}
+
 function checked(node: UiNode, answer: unknown): Outcome {
   const issues = checkUiData(node.component, answer) ?? [];
   if (issues.length > 0) return failed(issues[0].message, issues[0].fix, issues[0].path);
   if (node.component === "chart") return chartData(node, answer as Record<string, unknown>);
-  return { state: "ready", data: answer };
+  return { state: "ready", data: ITEMS_FAMILY.has(node.component) ? presentedAnswer(answer) : answer };
 }
 
 async function outcomeOf(running: RunningHost, manifest: PluginManifest, node: UiNode): Promise<Outcome> {

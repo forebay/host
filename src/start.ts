@@ -38,6 +38,7 @@ export interface HostOptions {
 export interface RunningHost {
   loaded: LoadedHost;
   places: HostPlaces;
+  bundles: BundleSource;
   hosts: HostsApi;
   status(): HostStatus;
   stop(): Promise<void>;
@@ -121,6 +122,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
     return {
       loaded,
       places,
+      bundles: options.bundles,
       hosts: hostsApi(runtime, places, environment),
       status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome()),
       stop: stopper(loaded, reconcile, runtime),
