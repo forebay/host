@@ -22,7 +22,6 @@ beforeEach(() => {
 
 afterEach(() => {
   try {
-    fixture.runtime.changes.reverse({ places: fixture.places, host: fixture.host.id });
     expect(userPathEntriesUnder(fixture.base)).toEqual([]);
   } finally {
     fixture.dispose();
