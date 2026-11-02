@@ -32,7 +32,7 @@ describe("the runtime library", () => {
       expect(places.portable).toBe(environment.SPISOR_HOME);
       expect(places.state).toBe(environment.SPISOR_STATE);
       expect(places.cache).toBe(environment.SPISOR_CACHE);
-      expect(places.secretsFile).toContain(environment.SPISOR_SECRETS);
+      expect(places.secretsFile).toBe(join(environment.SPISOR_SECRETS, "secrets.json"));
     } finally {
       runtime.close();
     }
@@ -41,7 +41,7 @@ describe("the runtime library", () => {
   it("throws on a failure answer", () => {
     const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
     try {
-      expect(() => runtime.registry.get({ places: { state: scratchDirectory() }, id: "" })).toThrow();
+      expect(() => runtime.registry.get({ places: { state: scratchDirectory() }, id: "" })).toThrow(/registry\.get: the argument carries no usable host id[\s\S]*fix: send/);
     } finally {
       runtime.close();
     }
@@ -50,6 +50,6 @@ describe("the runtime library", () => {
   it("closes twice without throwing", () => {
     const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
     runtime.close();
-    expect(() => runtime.close()).not.toThrow();
+    expect(() => runtime.close()).not.toThrow(/registry\.get: the argument carries no usable host id[\s\S]*fix: send/);
   });
 });
