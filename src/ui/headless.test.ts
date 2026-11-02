@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { HandClock, startFixtureHost } from "../__fixtures__/running-host.js";
 import type { FixtureHost } from "../__fixtures__/running-host.js";
-import { renderHeadless } from "./headless.js";
+import { renderEntry, renderHeadless, renderHeadlessSettings } from "./headless.js";
+import { mergeNavigation } from "./navigation.js";
 import type { HeadlessNode, HeadlessScreen } from "./headless.js";
 
 let fixture: FixtureHost | undefined;
 
-async function render(viewId: string, plugin = "viewer"): Promise<HeadlessScreen> {
-  fixture = await startFixtureHost([plugin]);
+async function render(viewId: string, plugin = "viewer", enabled = [plugin]): Promise<HeadlessScreen> {
+  fixture = await startFixtureHost(enabled);
   return renderHeadless(fixture.running, plugin, viewId);
 }
 
@@ -82,11 +83,44 @@ describe("renderHeadless", () => {
     expect(node(screen, "heading")).toMatchObject({ state: "ready", props: { text: "Dormant" } });
   });
 
-  it("renders the generated settings view through the same path", async () => {
-    const screen = await render("settings");
-    expect(screen.title).toBe("Settings");
+  it("renders the generated settings screen through the same path as a view", async () => {
+    fixture = await startFixtureHost(["viewer"]);
+    const screen = await renderHeadlessSettings(fixture.running, "viewer");
+    expect(screen).toMatchObject({ plugin: "viewer", kind: "settings", title: "Settings" });
+    expect(screen).not.toHaveProperty("view");
     expect(screen.nodes.filter((entry) => entry.component === "field").map((entry) => entry.props.field)).toEqual(["depth", "theme"]);
     expect(screen.nodes.every((entry) => entry.state === "ready")).toBe(true);
+  });
+
+  it("renders a declared view named settings as itself, and keeps the generated settings screen reachable", async () => {
+    const declared = await render("settings");
+    expect(declared).toMatchObject({ kind: "view", view: "settings", title: "Declared settings" });
+    const running = fixture!.running;
+    const entries = mergeNavigation([running.loaded.deployed.find((entry) => entry.manifest.id === "viewer")!.manifest], {}).entries;
+    const viewEntry = entries.find((entry) => entry.kind === "view" && entry.id === "settings")!;
+    const settingsEntry = entries.find((entry) => entry.kind === "settings")!;
+    expect((await renderEntry(running, viewEntry)).title).toBe("Declared settings");
+    const generated = await renderEntry(running, settingsEntry);
+    expect(generated).toMatchObject({ kind: "settings", title: "Settings" });
+    expect(generated.nodes[0].component).toBe("form");
+  });
+
+  it("refuses to render an action entry as a screen", async () => {
+    fixture = await startFixtureHost(["viewer"]);
+    await expect(renderEntry(fixture.running, { plugin: "viewer", kind: "action", id: "restart", title: "Restart", pinned: false })).rejects.toThrow("restart");
+  });
+
+  it("puts a node in error, not ready with another plugin's answer, when two active plugins provide its service", async () => {
+    const screen = await render("hello", "silent", ["greeter", "silent"]);
+    expect(node(screen, "message").state).toBe("error");
+    expect(node(screen, "message")).not.toHaveProperty("data");
+  });
+
+  it("renders a quarantined plugin's node unavailable while another plugin provides the same service", async () => {
+    const screen = await render("hello", "rival", ["greeter", "rival"]);
+    expect(fixture?.running.status().quarantined.map((entry) => entry.id)).toEqual(["rival"]);
+    expect(node(screen, "message").state).toBe("unavailable");
+    expect(node(screen, "message")).not.toHaveProperty("data");
   });
 
   it("refuses a view the plugin does not declare", async () => {

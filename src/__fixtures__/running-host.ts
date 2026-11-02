@@ -12,7 +12,10 @@ import { startHost } from "../start.js";
 import type { RunningHost } from "../start.js";
 
 const SOURCE = siblingRuntime(REPOSITORY_ROOT);
-const FIXTURE_IDS = ["a", "viewer", "dormant"];
+const FIXTURE_IDS = ["a", "viewer", "dormant", "greeter", "rival", "silent"];
+
+/** How many turns of the event loop to wait for a call to schedule its deadline before firing regardless. */
+const SCHEDULE_POLL_TURNS = 100;
 
 export interface FixtureHost {
   running: RunningHost;
@@ -34,7 +37,7 @@ export class HandClock implements Scheduler {
 
   /** @implNote A call schedules its deadline a few microtasks after it starts, so this yields until one is waiting. */
   async fireOnceScheduled(): Promise<void> {
-    for (let attempt = 0; attempt < 100 && this.tasks.length === 0; attempt++) {
+    for (let attempt = 0; attempt < SCHEDULE_POLL_TURNS && this.tasks.length === 0; attempt++) {
       await new Promise((resolve) => setImmediate(resolve));
     }
     const due = this.tasks;

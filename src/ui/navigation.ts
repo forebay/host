@@ -1,5 +1,5 @@
 import type { PluginManifest } from "@weivel/typescript";
-import { SETTINGS_TITLE, SETTINGS_VIEW_ID } from "./settings-view.js";
+import { SETTINGS_TITLE } from "./settings-view.js";
 
 export interface NavigationEntry {
   plugin: string;
@@ -14,6 +14,9 @@ export interface Navigation {
   /** Everything under the `ui` settings except `plugins`, for a renderer to apply as it sees fit. */
   preferences: Record<string, unknown>;
 }
+
+/** @implNote An entry is routed by its kind, so this id never names a view and a declared view called `settings` does not collide with it. */
+const SETTINGS_ENTRY_ID = "settings";
 
 interface PluginCustomisation {
   hidden: boolean;
@@ -67,7 +70,7 @@ function viewEntries(manifest: PluginManifest, customisation: PluginCustomisatio
 
 function settingsEntries(manifest: PluginManifest): NavigationEntry[] {
   if (Object.keys(manifest.settings ?? {}).length === 0) return [];
-  return [{ plugin: manifest.id, kind: "settings", id: SETTINGS_VIEW_ID, title: SETTINGS_TITLE, pinned: false }];
+  return [{ plugin: manifest.id, kind: "settings", id: SETTINGS_ENTRY_ID, title: SETTINGS_TITLE, pinned: false }];
 }
 
 function actionEntries(manifest: PluginManifest): NavigationEntry[] {

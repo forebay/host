@@ -4,9 +4,6 @@ const FORM_NODE_ID = "settingsForm";
 
 export const SETTINGS_TITLE = "Settings";
 
-/** The id a host lists and renders a plugin's generated settings view under. */
-export const SETTINGS_VIEW_ID = "settings";
-
 /** @implNote Field ids are positional because a setting key may hold characters a node id refuses, such as a dot. */
 function fieldNode(key: string, label: string, index: number): UiNode {
   return { id: `settingsField${index}`, parent: FORM_NODE_ID, component: "field", field: key, label };

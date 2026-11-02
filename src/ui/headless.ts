@@ -1,8 +1,10 @@
 import type { PluginManifest, UiComponent, UiNode, ViewDeclaration } from "@weivel/typescript";
 import { checkUiData } from "@weivel/typescript/host";
 import type { RunningHost } from "../start.js";
-import { callBinding, deployedManifest, providesService } from "./bindings.js";
-import { SETTINGS_VIEW_ID, settingsView } from "./settings-view.js";
+import { bindingTarget, deployedManifest } from "./binding-target.js";
+import { callBinding } from "./bindings.js";
+import type { NavigationEntry } from "./navigation.js";
+import { settingsView } from "./settings-view.js";
 
 export interface HeadlessNodeError {
   detail: string;
@@ -24,7 +26,9 @@ export interface HeadlessNode {
 
 export interface HeadlessScreen {
   plugin: string;
-  view: string;
+  kind: "view" | "settings";
+  /** The declared view id; absent for the generated settings screen, which is addressed by its kind. */
+  view?: string;
   title: string;
   nodes: HeadlessNode[];
 }
@@ -43,11 +47,10 @@ function propsOf(node: UiNode): Record<string, unknown> {
   return props;
 }
 
-function viewOf(manifest: PluginManifest, viewId: string): ViewDeclaration {
+function declaredView(manifest: PluginManifest, viewId: string): ViewDeclaration {
   const declared = manifest.views?.[viewId];
-  if (declared !== undefined) return declared;
-  if (viewId === SETTINGS_VIEW_ID) return settingsView(manifest);
-  throw new Error(`${manifest.id} declares no view ${viewId}`);
+  if (declared === undefined) throw new Error(`${manifest.id} declares no view ${viewId}`);
+  return declared;
 }
 
 function manifestOf(running: RunningHost, plugin: string): PluginManifest {
@@ -77,13 +80,11 @@ function checked(node: UiNode, answer: unknown): Outcome {
   return { state: "ready", data: answer };
 }
 
-function isUnavailable(running: RunningHost, service: string, manifest: PluginManifest): boolean {
-  return providesService(manifest, service) && running.loaded.host.service(service) === undefined;
-}
-
 async function outcomeOf(running: RunningHost, manifest: PluginManifest, node: UiNode): Promise<Outcome> {
   if (node.bind === undefined) return { state: "ready" };
-  if (isUnavailable(running, node.bind.service, manifest)) return { state: "unavailable" };
+  const target = bindingTarget(running, manifest.id, node.bind.service);
+  if (target.state === "unavailable") return { state: "unavailable" };
+  if (target.state === "refused") return failed(target.error.detail, target.error.fix);
   const answer = await callBinding(running, manifest.id, node.bind);
   return answer.ok ? checked(node, answer.value) : failed(answer.error.detail, answer.error.fix);
 }
@@ -99,17 +100,33 @@ async function renderNode(running: RunningHost, manifest: PluginManifest, node: 
   };
 }
 
+async function renderNodes(running: RunningHost, manifest: PluginManifest, view: ViewDeclaration): Promise<HeadlessNode[]> {
+  return Promise.all(view.nodes.map((node) => renderNode(running, manifest, node)));
+}
+
 /**
- * Renders one of a plugin's views to plain data, calling every binding and checking each answer
- * against the model, for tests and for a host with no interactive UI.
+ * Renders one of a plugin's declared views to plain data, calling every binding and checking each
+ * answer against the model, for tests and for a host with no interactive UI.
  *
  * @implNote A failed, late or misshapen answer puts only its own node in `error`; the rest render
- * and the plugin is never quarantined, since one bad read says nothing about its services. A view
- * id the plugin does not declare resolves to its generated settings view when it is `settings`.
+ * and the plugin is never quarantined, since one bad read says nothing about its services.
  */
 export async function renderHeadless(running: RunningHost, plugin: string, viewId: string): Promise<HeadlessScreen> {
   const manifest = manifestOf(running, plugin);
-  const view = viewOf(manifest, viewId);
-  const nodes = await Promise.all(view.nodes.map((node) => renderNode(running, manifest, node)));
-  return { plugin, view: viewId, title: view.title, nodes };
+  const view = declaredView(manifest, viewId);
+  return { plugin, kind: "view", view: viewId, title: view.title, nodes: await renderNodes(running, manifest, view) };
+}
+
+/** Renders a plugin's generated settings screen through the same path as a declared view. */
+export async function renderHeadlessSettings(running: RunningHost, plugin: string): Promise<HeadlessScreen> {
+  const manifest = manifestOf(running, plugin);
+  const view = settingsView(manifest);
+  return { plugin, kind: "settings", title: view.title, nodes: await renderNodes(running, manifest, view) };
+}
+
+/** Renders the screen a navigation entry opens, routed by its kind; an action opens no screen. */
+export function renderEntry(running: RunningHost, entry: NavigationEntry): Promise<HeadlessScreen> {
+  if (entry.kind === "view") return renderHeadless(running, entry.plugin, entry.id);
+  if (entry.kind === "settings") return renderHeadlessSettings(running, entry.plugin);
+  return Promise.reject(new Error(`${entry.plugin} action ${entry.id} is run, not rendered`));
 }
