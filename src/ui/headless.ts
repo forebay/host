@@ -26,14 +26,23 @@ export interface HeadlessNode {
   props: Record<string, unknown>;
 }
 
-export interface HeadlessScreen {
+export interface PluginScreen {
   plugin: string;
-  kind: "view" | "settings" | "host";
+  kind: "view" | "settings";
   /** The declared view id; absent for the generated settings screen, which is addressed by its kind. */
   view?: string;
   title: string;
   nodes: HeadlessNode[];
 }
+
+/** A screen the host itself draws; it has no `plugin`, since `host` is a valid plugin id. */
+export interface HostScreen {
+  kind: "host";
+  title: string;
+  nodes: HeadlessNode[];
+}
+
+export type HeadlessScreen = PluginScreen | HostScreen;
 
 type Outcome = Pick<HeadlessNode, "state" | "data" | "error">;
 
@@ -77,9 +86,12 @@ function chartData(node: UiNode, answer: Record<string, unknown>): Outcome {
 
 const ITEMS_FAMILY: ReadonlySet<UiComponent> = new Set(["list", "table", "tree"]);
 
+function hasItems(answer: unknown): answer is { items: UiItem[] } {
+  return typeof answer === "object" && answer !== null && Array.isArray((answer as { items?: unknown }).items);
+}
+
 function presentedAnswer(answer: unknown): unknown {
-  const { items } = answer as { items: UiItem[] };
-  return { ...(answer as object), items: presentItems(items) };
+  return hasItems(answer) ? { ...answer, items: presentItems(answer.items) } : answer;
 }
 
 function checked(node: UiNode, answer: unknown): Outcome {
@@ -120,14 +132,14 @@ async function renderNodes(running: RunningHost, manifest: PluginManifest, view:
  * @implNote A failed, late or misshapen answer puts only its own node in `error`; the rest render
  * and the plugin is never quarantined, since one bad read says nothing about its services.
  */
-export async function renderHeadless(running: RunningHost, plugin: string, viewId: string): Promise<HeadlessScreen> {
+export async function renderHeadless(running: RunningHost, plugin: string, viewId: string): Promise<PluginScreen> {
   const manifest = manifestOf(running, plugin);
   const view = declaredView(manifest, viewId);
   return { plugin, kind: "view", view: viewId, title: view.title, nodes: await renderNodes(running, manifest, view) };
 }
 
 /** Renders a plugin's generated settings screen through the same path as a declared view. */
-export async function renderHeadlessSettings(running: RunningHost, plugin: string): Promise<HeadlessScreen> {
+export async function renderHeadlessSettings(running: RunningHost, plugin: string): Promise<PluginScreen> {
   const manifest = manifestOf(running, plugin);
   const view = settingsView(manifest);
   return { plugin, kind: "settings", title: view.title, nodes: await renderNodes(running, manifest, view) };

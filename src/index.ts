@@ -26,6 +26,6 @@ export type { RowArgument } from "./ui/bindings.js";
 export { bindingTarget } from "./ui/binding-target.js";
 export type { BindingTarget } from "./ui/binding-target.js";
 export { renderEntry, renderHeadless, renderHeadlessSettings } from "./ui/headless.js";
-export type { HeadlessNode, HeadlessNodeError, HeadlessScreen } from "./ui/headless.js";
+export type { HeadlessNode, HeadlessNodeError, HeadlessScreen, HostScreen, PluginScreen } from "./ui/headless.js";
 export { pluginList, presentItems, renderPluginList, threeStateList } from "./lists.js";
 export type { Detector, PresentedItem } from "./lists.js";

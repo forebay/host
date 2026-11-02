@@ -73,6 +73,14 @@
         }
       ]
     },
+    "families": {
+      "title": "Families",
+      "nodes": [
+        { "id": "asList", "component": "list", "bind": { "service": "viewer:status", "method": "rows" } },
+        { "id": "asTable", "component": "table", "bind": { "service": "viewer:status", "method": "rows" } },
+        { "id": "asTree", "component": "tree", "bind": { "service": "viewer:status", "method": "rows" } }
+      ]
+    },
     "wrongShape": {
       "title": "Wrong shape",
       "nodes": [

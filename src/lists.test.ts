@@ -22,6 +22,11 @@ describe("threeStateList", () => {
     expect(threeStateList([], [item("a")], [item("a")])).toEqual([{ id: "a", state: "detected" }]);
   });
 
+  it("keeps the first of an id repeated within one input", () => {
+    const list = threeStateList([{ id: "a", label: "first" }, { id: "a", label: "second" }], [], []);
+    expect(list).toEqual([{ id: "a", label: "first", state: "installed" }]);
+  });
+
   it("orders by state then by id", () => {
     const list = threeStateList([item("z"), item("b")], [item("y"), item("c")], [item("x"), item("a")]);
     expect(list.map(({ id, state }) => `${state}:${id}`)).toEqual(["installed:b", "installed:z", "detected:c", "detected:y", "available:a", "available:x"]);
@@ -38,6 +43,12 @@ describe("presentItems", () => {
       { id: "n" },
     ]);
   });
+
+  it("replaces an action a detected row carried with install, since an unusable row offers only that", () => {
+    expect(presentItems([{ id: "d", state: "detected", values: {} , ...{ action: "open" } } as never])).toEqual([
+      { id: "d", state: "detected", values: {}, action: "install", unavailable: true },
+    ]);
+  });
 });
 
 describe("pluginList", () => {
@@ -52,15 +63,26 @@ describe("pluginList", () => {
 });
 
 describe("renderPluginList", () => {
-  it("shows a present, not enabled plugin that a detector finds as a detected row with an install action", async () => {
+  async function plugins(detected: boolean) {
     fixture = await startFixtureHost(["viewer"]);
-    const screen = await renderPluginList(fixture.running, [{ id: "greeter", detect: () => true }]);
+    expect(fixture.running.bundles.list().map(({ id }) => id)).toContain("greeter");
+    expect(fixture.running.status().active).not.toContain("greeter");
+    const screen = await renderPluginList(fixture.running, [{ id: "greeter", detect: () => detected }]);
+    return { screen, items: (screen.nodes[0].data as { items: Array<Record<string, unknown>> }).items };
+  }
+
+  it("shows a bundled, not enabled plugin that a detector finds as a detected row with an install action", async () => {
+    const { screen, items } = await plugins(true);
     expect(screen.kind).toBe("host");
+    expect(screen).not.toHaveProperty("plugin");
     expect(screen.nodes).toHaveLength(1);
-    const [table] = screen.nodes;
-    expect(table).toMatchObject({ component: "table", state: "ready" });
-    const items = (table.data as { items: Array<Record<string, unknown>> }).items;
+    expect(screen.nodes[0]).toMatchObject({ component: "table", state: "ready" });
     expect(items.find((row) => row.id === "greeter")).toMatchObject({ state: "detected", unavailable: true, action: "install" });
     expect(items.find((row) => row.id === "viewer")).not.toHaveProperty("unavailable");
+  });
+
+  it("shows the same plugin as available when no detector finds it", async () => {
+    const { items } = await plugins(false);
+    expect(items.find((row) => row.id === "greeter")).toMatchObject({ state: "available", unavailable: true, action: "install" });
   });
 });
