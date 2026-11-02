@@ -18,3 +18,6 @@ jobs:
       node_install: npm ci --prefix siblings/model && npm ci --prefix siblings/typescript && npm ci
       node_build: cmake -S siblings/library -B siblings/library/build && cmake --build siblings/library/build --config Release && npm run build --prefix siblings/typescript && npm run build
       node_test: npm test
+      cmake_configure: '-S siblings/library -B siblings/library/build'
+      cmake_build: '--build siblings/library/build --config Release'
+      cmake_test: ''
