@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFixture } from "./context/fixture.js";
+import { userPathEntriesUnder } from "./context/user-path.js";
 import type { Fixture } from "./context/fixture.js";
 import { registerHost } from "./registration.js";
 import type { Provenance } from "./registration.js";
@@ -18,7 +19,14 @@ beforeEach(() => {
   environment = { PATH: pathDirectory, HOME: userHome, USERPROFILE: userHome, SHELL: "/bin/sh" };
 });
 
-afterEach(() => fixture.dispose());
+afterEach(() => {
+  try {
+    fixture.runtime.changes.reverse({ places: fixture.places, host: fixture.host.id });
+    expect(userPathEntriesUnder(fixture.base)).toEqual([]);
+  } finally {
+    fixture.dispose();
+  }
+});
 
 function provenanceAt(installedAt: string): Provenance {
   return {
@@ -40,6 +48,12 @@ function storedProvenance(): unknown {
 }
 
 describe("registerHost", () => {
+  it("refuses an environment with no user home before registering anything", () => {
+    const { HOME, USERPROFILE, ...withoutHome } = environment;
+    expect(() => registerHost(fixture.runtime, fixture.places, identityWithCommand(), provenanceAt("2026-01-01T00:00:00Z"), withoutHome)).toThrow(/HOME nor USERPROFILE/);
+    expect(fixture.runtime.registry.get({ places: fixture.places, id: fixture.host.id }).registration).toBeUndefined();
+  });
+
   it("records the provenance of the first start", () => {
     const first = provenanceAt("2026-01-01T00:00:00Z");
     const registered = registerHost(fixture.runtime, fixture.places, fixture.host, first, environment);
