@@ -127,3 +127,10 @@ describe("renderHeadless", () => {
     await expect(render("nowhere")).rejects.toThrow("nowhere");
   });
 });
+
+describe("renderHeadless item presentation", () => {
+  it("gives a plugin's own detected row the unavailable treatment", async () => {
+    const screen = await render("overview");
+    expect(node(screen, "rows").data).toEqual({ items: [{ id: "x", state: "detected", unavailable: true, action: "install" }] });
+  });
+});
