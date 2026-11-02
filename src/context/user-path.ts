@@ -4,7 +4,7 @@ import { basename } from "node:path";
 /** The entries of the real user PATH on Windows (HKCU\Environment), empty elsewhere. */
 export function userPathEntries(): string[] {
   if (process.platform !== "win32") return [];
-  const output = execFileSync("reg", ["query", "HKCU\Environment", "/v", "Path"], { encoding: "utf8" });
+  const output = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "Path"], { encoding: "utf8" });
   const line = output.split(/\r?\n/).find((candidate) => /^\s+Path\s+REG_/i.test(candidate)) ?? "";
   return (line.split(/REG_\w+/i)[1] ?? "").trim().split(";").filter((entry) => entry !== "");
 }
