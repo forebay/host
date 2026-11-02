@@ -31,6 +31,19 @@ describe("callBinding", () => {
     expect(answer).toEqual({ ok: true, value: { item: "x", keep: 1 } });
   });
 
+  it("lets a row override only item and items, never another declared argument key", async () => {
+    const { running } = await hostWith(["viewer"]);
+    const binding = { service: "viewer:status", method: "echo", argument: { item: "declared", keep: 1 } };
+    const row = { item: "x", items: ["x", "y"], keep: 2 } as unknown as { item: string; items: string[] };
+    expect(await callBinding(running, "viewer", binding, row)).toEqual({ ok: true, value: { item: "x", items: ["x", "y"], keep: 1 } });
+  });
+
+  it("refuses a binding to a service two active plugins provide", async () => {
+    const { running } = await hostWith(["greeter", "silent"]);
+    const answer = await callBinding(running, "silent", { service: "demo:greeting", method: "greet" });
+    expect(answer.ok).toBe(false);
+  });
+
   it("refuses a service the plugin consumes but does not provide, even when another plugin provides it", async () => {
     const { running } = await hostWith(["a", "viewer"]);
     expect(running.loaded.host.service("demo:greeting")).toBeDefined();
