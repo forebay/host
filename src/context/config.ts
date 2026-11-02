@@ -31,6 +31,15 @@ function layerFor(manifest: PluginManifest, key: string): SettingsLayer {
   return declared ? (manifest.settings?.[key]?.layer ?? "portable") : "application";
 }
 
+/** @implNote The value is already persisted here, so a failing publish must not turn that into a rejected `set`. */
+function publishQuietly(publish: ActivityPublisher, key: string, previous: unknown, value: unknown): void {
+  try {
+    publish("config.set", { key, from: previous, to: value });
+  } catch {
+    return;
+  }
+}
+
 export function buildConfig(
   runtime: Runtime,
   places: HostPlaces,
@@ -43,7 +52,7 @@ export function buildConfig(
     if (!carriesAsJson(value)) throw new Error(`config.set("${key}"): the value cannot be carried as JSON`);
     const layer = options?.layer ?? layerFor(manifest, key);
     const { previous } = runtime.config.set({ ...scope(), key, value, layer });
-    publish("config.set", { key, from: previous, to: value });
+    publishQuietly(publish, key, previous, value);
   }
   return {
     all: () => runtime.config.all(scope()).values,

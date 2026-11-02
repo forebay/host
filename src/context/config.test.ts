@@ -80,6 +80,13 @@ describe("config layers", () => {
     expect(fixture.activity).toHaveLength(1);
   });
 
+  it("keeps a persisted value and resolves when publishing its activity throws", async () => {
+    const throwingBus = { publish: () => { throw new Error("the bus broke"); }, subscribe: () => () => {} };
+    const config = buildRuntime(fixture.runtime, fixture.places, fixture.host, manifest, throwingBus, "2026-11-02T10:00:00.000Z").config;
+    await expect(config.set("local", "kept")).resolves.toBeUndefined();
+    expect(config.get("local")).toBe("kept");
+  });
+
   it("publishes activity with the key, the previous value and the new one", async () => {
     const config = configOf();
     await config.set("local", "one");
