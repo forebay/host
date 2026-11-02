@@ -10,13 +10,19 @@ function isPlainObject(value: object): boolean {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** True only when a JSON round trip hands back exactly what was put in. */
-function carriesAsJson(value: unknown): boolean {
+function isDense(array: unknown[]): boolean {
+  return Object.keys(array).length === array.length;
+}
+
+/** True only when a JSON round trip hands back exactly what was put in: no cycles, holes, or non-JSON values. */
+function carriesAsJson(value: unknown, ancestors: ReadonlySet<object> = new Set()): boolean {
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(carriesAsJson);
-  if (typeof value === "object") return isPlainObject(value) && Object.values(value).every(carriesAsJson);
-  return false;
+  if (typeof value !== "object" || ancestors.has(value)) return false;
+  const path = new Set(ancestors).add(value);
+  const carries = (member: unknown) => carriesAsJson(member, path);
+  if (Array.isArray(value)) return isDense(value) && value.every(carries);
+  return isPlainObject(value) && Object.values(value).every(carries);
 }
 
 /** A declared setting goes where its manifest says (portable by default); anything undeclared stays in the application. */
