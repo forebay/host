@@ -178,7 +178,10 @@
             "service": "viewer:status",
             "method": "seriesAndMeasure"
           }
-        }
+        },
+        { "id": "badMeter", "component": "chart", "chart": "meter", "bind": { "service": "viewer:status", "method": "seriesAndBadMeasure" } },
+        { "id": "badTrend", "component": "chart", "chart": "line", "bind": { "service": "viewer:status", "method": "measureAndBadSeries" } },
+        { "id": "measureTrend", "component": "chart", "chart": "line", "bind": { "service": "viewer:status", "method": "measure" } }
       ]
     },
     "settings": {
