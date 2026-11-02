@@ -6,10 +6,13 @@ import type { PluginHostOptions } from "@weivel/typescript/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compileFixtureBundles } from "./__fixtures__/bundles.js";
 import { REPOSITORY_ROOT } from "./__fixtures__/context.js";
+import { ACTIVITY_TOPIC } from "./context/activity.js";
+import type { ActivityRecord } from "./context/activity.js";
 import type { HostIdentity } from "./identity.js";
 import { directoryBundles } from "./plugins/bundle-source.js";
 import { openRuntime, siblingRuntime } from "./runtime/open.js";
 import { startHost } from "./start.js";
+import { callBinding } from "./ui/bindings.js";
 import type { HostOptions, RunningHost } from "./start.js";
 
 type Layer = "portable" | "application";
@@ -183,6 +186,15 @@ describe("startHost", () => {
     });
     await expect(host.stop()).rejects.toThrow("a plugin refused to stop");
     expect(signals[0].aborted).toBe(true);
+  });
+
+  it("hands the activity plugins publish to whoever subscribes on the running host", async () => {
+    enable("announcer");
+    const host = await started({ bundles: directoryBundles(compileFixtureBundles(join(base, "bundles"), ["announcer"])) });
+    const heard: ActivityRecord[] = [];
+    host.events.subscribe(ACTIVITY_TOPIC, (record) => heard.push(record as ActivityRecord));
+    expect(await callBinding(host, "announcer", { service: "announcer:voice", method: "say" })).toMatchObject({ ok: true });
+    expect(heard).toEqual([{ source: "announcer", kind: "log.error", detail: { message: "spoken" } }]);
   });
 
   it("stops twice without failing", async () => {

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { PluginManifest } from "@weivel/typescript";
 import type { RuntimeEvents } from "@weivel/typescript/engine";
+import type { ActivityRecord } from "../context/activity.js";
 import type { HostIdentity } from "../identity.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
 import type { Runtime, RuntimeSource } from "../runtime/open.js";
@@ -16,7 +17,7 @@ export interface Fixture {
   runtime: Runtime;
   places: HostPlaces;
   host: HostIdentity;
-  activity: Array<{ source: string; kind: string; detail: Record<string, unknown> }>;
+  activity: ActivityRecord[];
   bus: RuntimeEvents;
   dispose(): void;
 }
@@ -24,7 +25,7 @@ export interface Fixture {
 function recordingBus(records: Fixture["activity"]): RuntimeEvents {
   return {
     publish: (topic, payload) => {
-      if (topic === "activity") records.push(payload as Fixture["activity"][number]);
+      if (topic === "activity") records.push(payload as ActivityRecord);
     },
     subscribe: () => () => {},
   };

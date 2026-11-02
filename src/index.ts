@@ -1,6 +1,8 @@
 export { openRuntime, siblingRuntime } from "./runtime/open.js";
 export type { Runtime, RuntimeSource } from "./runtime/open.js";
 export { buildRuntime } from "./context/build.js";
+export { ACTIVITY_TOPIC } from "./context/activity.js";
+export type { ActivityRecord } from "./context/activity.js";
 export { reconcileSecretsInBackground } from "./context/reconcile.js";
 export type { ReconcileAnswer } from "./context/reconcile-worker.js";
 export type { HostPlaces } from "./context/places.js";

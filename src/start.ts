@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { startPlugins } from "@weivel/typescript/host";
 import type { LoadedHost, PluginHostOptions } from "@weivel/typescript/host";
 import type { PluginManifest } from "@weivel/typescript";
+import type { RuntimeEvents } from "@weivel/typescript/engine";
 import { buildRuntime } from "./context/build.js";
 import type { HostPlaces } from "./context/places.js";
 import { reconcileSecretsInBackground } from "./context/reconcile.js";
@@ -40,6 +41,8 @@ export interface RunningHost {
   places: HostPlaces;
   bundles: BundleSource;
   hosts: HostsApi;
+  /** The bus every plugin of this host publishes to, activity on `ACTIVITY_TOPIC` included. */
+  events: RuntimeEvents;
   status(): HostStatus;
   stop(): Promise<void>;
 }
@@ -73,9 +76,8 @@ function selectionOf(runtime: Runtime, places: HostPlaces, options: HostOptions)
 }
 
 /** @implNote `pluginDir` is required by the engine but never read, because the `scan` built from the bundle source replaces it. */
-function pluginHostOptions(runtime: Runtime, places: HostPlaces, options: HostOptions, selection: PluginSelection): PluginHostOptions {
+function pluginHostOptions(runtime: Runtime, places: HostPlaces, options: HostOptions, selection: PluginSelection, bus: RuntimeEvents): PluginHostOptions {
   const wellKnownServices = wellKnownServicesOf(options.consumes ?? [], options.defaults ?? {});
-  const bus = eventBus();
   const startedAt = new Date().toISOString();
   return {
     app: options.identity.id,
@@ -105,10 +107,17 @@ function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, runtime: Runti
   return () => (stopping ??= stopOnce());
 }
 
-async function loadPlugins(runtime: Runtime, places: HostPlaces, options: HostOptions, engine: HostEngine, environment: Record<string, string>) {
+async function loadPlugins(
+  runtime: Runtime,
+  places: HostPlaces,
+  options: HostOptions,
+  engine: HostEngine,
+  environment: Record<string, string>,
+  bus: RuntimeEvents,
+) {
   registerHost(runtime, places, options.identity, options.provenance, environment);
   const selection = selectionOf(runtime, places, options);
-  const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection));
+  const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection, bus));
   return { selection, loaded };
 }
 
@@ -117,13 +126,15 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
   const environment = options.environment ?? processEnvironment();
   const places = runtime.places.resolve({ home: userHomeOf(environment), environment });
   const reconcile = trackReconcile((signal) => engine.reconcileSecrets(options.runtime, places, signal));
+  const bus = eventBus();
   try {
-    const { selection, loaded } = await loadPlugins(runtime, places, options, engine, environment);
+    const { selection, loaded } = await loadPlugins(runtime, places, options, engine, environment, bus);
     return {
       loaded,
       places,
       bundles: options.bundles,
       hosts: hostsApi(runtime, places, environment),
+      events: bus,
       status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome()),
       stop: stopper(loaded, reconcile, runtime),
     };
