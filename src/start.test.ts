@@ -11,7 +11,7 @@ import type { ActivityRecord } from "./context/activity.js";
 import type { HostIdentity } from "./identity.js";
 import { directoryBundles } from "./plugins/bundle-source.js";
 import { openRuntime, siblingRuntime } from "./runtime/open.js";
-import { startHost } from "./start.js";
+import { startHost, startHostWith } from "./start.js";
 import { callBinding } from "./ui/bindings.js";
 import type { HostOptions, RunningHost } from "./start.js";
 
@@ -130,7 +130,7 @@ describe("startHost", () => {
 
   it("hands startPlugins the libraries folder in the cache place", async () => {
     const handed: PluginHostOptions[] = [];
-    running = await startHost(options(), {
+    running = await startHostWith(options(), {
       startPlugins: (given) => {
         handed.push(given);
         return startPlugins(given);
@@ -145,13 +145,13 @@ describe("startHost", () => {
   });
 
   it("answers the secrets reconcile outcome in status once it settles", async () => {
-    running = await startHost(options(), { reconcileSecrets: async () => ({ failed: "no secret store" }) });
+    running = await startHostWith(options(), { reconcileSecrets: async () => ({ failed: "no secret store" }) });
     await Promise.resolve();
     expect(running.status().secrets).toEqual({ failed: "no secret store" });
   });
 
   it("answers no secrets outcome while the reconcile is still running", async () => {
-    running = await startHost(options(), {
+    running = await startHostWith(options(), {
       reconcileSecrets: (_source, _places, signal) => new Promise((resolve) => signal.addEventListener("abort", () => resolve({ failed: "stopped" }))),
     });
     expect(running.status().secrets).toBeNull();
@@ -159,7 +159,7 @@ describe("startHost", () => {
 
   it("stops the reconcile worker when the host stops", async () => {
     const signals: AbortSignal[] = [];
-    const host = await startHost(options(), {
+    const host = await startHostWith(options(), {
       reconcileSecrets: (_source, _places, signal) => {
         signals.push(signal);
         return new Promise((resolve) => signal.addEventListener("abort", () => resolve({ failed: "stopped" })));
@@ -172,7 +172,7 @@ describe("startHost", () => {
 
   it("still stops the reconcile worker when stopping the plugins throws", async () => {
     const signals: AbortSignal[] = [];
-    const host = await startHost(options(), {
+    const host = await startHostWith(options(), {
       startPlugins: async (given) => ({
         ...(await startPlugins(given)),
         stop: async () => {

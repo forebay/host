@@ -19,7 +19,7 @@ export { disabledPlugins, enabledPlugins, pinnedVersions } from "./plugins/enabl
 export type { EnabledPlugin } from "./plugins/enabled.js";
 export { withDefaults } from "./plugins/defaults.js";
 export { startHost } from "./start.js";
-export type { HostEngine, HostOptions, RunningHost } from "./start.js";
+export type { HostOptions, RunningHost } from "./start.js";
 export type { HostStatus, StatusRefusal } from "./status.js";
 export { mergeNavigation } from "./ui/navigation.js";
 export type { Navigation, NavigationEntry } from "./ui/navigation.js";

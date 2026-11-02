@@ -8,7 +8,7 @@ import { REPOSITORY_ROOT } from "./context.js";
 import type { HostIdentity } from "../identity.js";
 import { directoryBundles } from "../plugins/bundle-source.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
-import { startHost } from "../start.js";
+import { startHostWith } from "../start.js";
 import type { RunningHost } from "../start.js";
 
 const SOURCE = siblingRuntime(REPOSITORY_ROOT);
@@ -75,7 +75,7 @@ export async function startFixtureHost(enabled: readonly string[], scheduler?: S
   const environment = environmentUnder(base);
   const identity: HostIdentity = { id: "test-host", version: "1.0.0", home: join(base, "home"), requiresCommand: false, commands: [] };
   enable(identity, environment, enabled);
-  const running = await startHost(
+  const running = await startHostWith(
     {
       identity,
       runtime: SOURCE,

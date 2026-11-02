@@ -50,7 +50,11 @@ export interface RunningHost {
   stop(): Promise<void>;
 }
 
-/** What `startHost` reaches the engine and the secrets worker through, replaced in tests. */
+/**
+ * What `startHost` reaches the engine and the secrets worker through.
+ *
+ * @internal Replaced in tests through {@link startHostWith}; not part of the package entry.
+ */
 export interface HostEngine {
   startPlugins(options: PluginHostOptions): Promise<LoadedHost>;
   reconcileSecrets(source: RuntimeSource, places: HostPlaces, signal: AbortSignal): Promise<ReconcileAnswer>;
@@ -149,13 +153,13 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
 }
 
 /**
- * Opens the runtime, registers the host and starts the plugins its settings enable, in the order
- * their declared services give.
+ * Starts a host with parts of its engine replaced.
  *
+ * @internal A test seam, kept out of the package entry; an application calls {@link startHost}.
  * @implNote The runtime is closed again when anything before the plugins start throws, since no
  * `stop` exists yet to close it.
  */
-export async function startHost(options: HostOptions, engine: Partial<HostEngine> = {}): Promise<RunningHost> {
+export async function startHostWith(options: HostOptions, engine: Partial<HostEngine>): Promise<RunningHost> {
   const runtime = openRuntime(options.runtime);
   try {
     return await startOn(runtime, options, { ...ENGINE, ...engine });
@@ -163,4 +167,12 @@ export async function startHost(options: HostOptions, engine: Partial<HostEngine
     runtime.close();
     throw error;
   }
+}
+
+/**
+ * Opens the runtime, registers the host and starts the plugins its settings enable, in the order
+ * their declared services give.
+ */
+export function startHost(options: HostOptions): Promise<RunningHost> {
+  return startHostWith(options, {});
 }
