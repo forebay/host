@@ -1,9 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFixture } from "./context/fixture.js";
-import { userPathEntriesUnder } from "./context/user-path.js";
-import type { Fixture } from "./context/fixture.js";
+import { createFixture } from "./__fixtures__/context.js";
+import { userPathEntriesUnder } from "./__fixtures__/user-path.js";
+import type { Fixture } from "./__fixtures__/context.js";
 import { registerHost } from "./registration.js";
 import type { Provenance } from "./registration.js";
 

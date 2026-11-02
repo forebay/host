@@ -6,6 +6,7 @@ import { activityPublisher } from "./activity.js";
 import { buildConfig } from "./config.js";
 import { buildLogger } from "./log.js";
 import type { HostPlaces } from "./places.js";
+import { secretSettingStore } from "./secret-settings.js";
 import { buildSecrets } from "./secrets.js";
 
 /** @implNote `cache` is the plugin's folder in the cache place, as the home-layout design moves it, not the per-application cache. */
@@ -30,7 +31,7 @@ export function buildRuntime(
 ): PluginRuntime {
   const publish = activityPublisher(activity, manifest.id);
   return {
-    config: buildConfig(runtime, places, host, manifest, publish),
+    config: buildConfig(runtime, places, host, manifest, publish, secretSettingStore(runtime, places, manifest.id)),
     log: buildLogger(runtime, places, host, manifest, startedAt, publish),
     paths: buildPaths(runtime, places, host, manifest.id),
     events: activity,

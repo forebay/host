@@ -1,13 +1,16 @@
 export { openRuntime, siblingRuntime } from "./runtime/open.js";
 export type { Runtime, RuntimeSource } from "./runtime/open.js";
 export { buildRuntime } from "./context/build.js";
+export { ACTIVITY_TOPIC } from "./context/activity.js";
+export type { ActivityRecord } from "./context/activity.js";
 export { reconcileSecretsInBackground } from "./context/reconcile.js";
 export type { ReconcileAnswer } from "./context/reconcile-worker.js";
 export type { HostPlaces } from "./context/places.js";
 export type { HostIdentity } from "./identity.js";
 export { registerHost } from "./registration.js";
-export type { Provenance, RegisteredHost } from "./registration.js";
+export type { Provenance, RefusedCommand, RegisteredHost } from "./registration.js";
 export { hostsApi } from "./hosts.js";
+export type { HostSettings } from "./host-settings.js";
 export type { HostEntry, HostRemoval, HostsApi } from "./hosts.js";
 export { userHomeOf } from "./user-home.js";
 export { directoryBundles } from "./plugins/bundle-source.js";
@@ -16,8 +19,8 @@ export { disabledPlugins, enabledPlugins, pinnedVersions } from "./plugins/enabl
 export type { EnabledPlugin } from "./plugins/enabled.js";
 export { withDefaults } from "./plugins/defaults.js";
 export { startHost } from "./start.js";
-export type { HostEngine, HostOptions, RunningHost } from "./start.js";
-export type { HostStatus } from "./status.js";
+export type { HostOptions, RunningHost } from "./start.js";
+export type { HostStatus, StatusRefusal } from "./status.js";
 export { mergeNavigation } from "./ui/navigation.js";
 export type { Navigation, NavigationEntry } from "./ui/navigation.js";
 export { settingsView } from "./ui/settings-view.js";

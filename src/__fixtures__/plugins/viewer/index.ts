@@ -13,6 +13,9 @@ const status = {
   hangs: () => new Promise(() => {}),
   series: () => ({ series: SERIES }),
   seriesAndMeasure: () => ({ series: SERIES, value: 3, maximum: 10 }),
+  seriesAndBadMeasure: () => ({ series: SERIES, value: "three", maximum: 10 }),
+  measure: () => ({ value: 3, maximum: 10 }),
+  measureAndBadSeries: () => ({ value: 3, maximum: 10, series: "load" }),
   echo: (argument: unknown) => argument,
 };
 

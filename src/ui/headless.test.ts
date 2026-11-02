@@ -70,6 +70,15 @@ describe("renderHeadless", () => {
     expect(node(screen, "gauge").state).toBe("error");
   });
 
+  it("checks a chart answer against the branch its node selects, so the other branch being valid never lets it through", async () => {
+    const screen = await render("charts");
+    expect(node(screen, "badMeter")).toMatchObject({ state: "error", error: { path: "value" } });
+    expect(node(screen, "badMeter")).not.toHaveProperty("data");
+    expect(node(screen, "badTrend")).toMatchObject({ state: "error", error: { path: "series" } });
+    expect(node(screen, "badTrend")).not.toHaveProperty("data");
+    expect(node(screen, "measureTrend")).toMatchObject({ state: "error", error: { path: "series" } });
+  });
+
   it("carries only the known node members in props, so an unknown one such as color never reaches a renderer", async () => {
     const rows = node(await render("overview"), "rows");
     expect(rows.props).toEqual({ tone: "accent", span: 6, action: "restart" });
@@ -131,6 +140,6 @@ describe("renderHeadless", () => {
 describe("renderHeadless item presentation", () => {
   it.each(["asList", "asTable", "asTree"])("gives a plugin's own detected row the unavailable treatment in %s", async (nodeId) => {
     const screen = await render("families");
-    expect(node(screen, nodeId).data).toEqual({ items: [{ id: "x", state: "detected", unavailable: true, action: "install" }] });
+    expect(node(screen, nodeId).data).toEqual({ items: [{ id: "x", state: "detected", unavailable: true, install: true }] });
   });
 });

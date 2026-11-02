@@ -1,3 +1,4 @@
+import { isPluginError } from "@weivel/typescript/engine";
 import type { HostIdentity } from "./identity.js";
 import type { HostPlaces } from "./context/places.js";
 import type { Runtime } from "./runtime/open.js";
@@ -12,10 +13,20 @@ export type Provenance = {
   installedAt: string;
 };
 
+export interface RefusedCommand {
+  name: string;
+  detail: string;
+  fix: string;
+}
+
 export interface RegisteredHost {
   provenance: Provenance;
   commands: string[];
+  /** Commands the runtime refused for a host that does not require one; a host that does fails to start instead. */
+  refusedCommands: RefusedCommand[];
 }
+
+type Requested = { name: string } | { refused: RefusedCommand };
 
 function storedProvenance(runtime: Runtime, places: HostPlaces, id: string): Provenance | undefined {
   return runtime.registry.get({ places, id }).registration?.provenance as Provenance | undefined;
@@ -41,14 +52,15 @@ function recordRegistration(runtime: Runtime, places: HostPlaces, identity: Host
   });
 }
 
-function requestCommands(
+/** @implNote Only the runtime's refusal is recorded, and only for a host that can run without a command; anything else still throws. */
+function requestCommand(
   runtime: Runtime,
   places: HostPlaces,
   identity: HostIdentity,
   environment: Record<string, string>,
-): string[] {
-  const names: string[] = [];
-  for (const command of identity.commands) {
+  command: { name: string; target: string },
+): Requested | undefined {
+  try {
     const answered = runtime.commands.request({
       places,
       environment,
@@ -57,9 +69,24 @@ function requestCommands(
       name: command.name,
       target: command.target,
     });
-    if (answered.name !== undefined) names.push(answered.name);
+    return answered.name === undefined ? undefined : { name: answered.name };
+  } catch (error) {
+    if (identity.requiresCommand || !isPluginError(error)) throw error;
+    return { refused: { name: command.name, detail: error.detail, fix: error.fix } };
   }
-  return names;
+}
+
+function requestCommands(
+  runtime: Runtime,
+  places: HostPlaces,
+  identity: HostIdentity,
+  environment: Record<string, string>,
+): Pick<RegisteredHost, "commands" | "refusedCommands"> {
+  const requested = identity.commands.map((command) => requestCommand(runtime, places, identity, environment, command));
+  return {
+    commands: requested.flatMap((outcome) => (outcome !== undefined && "name" in outcome ? [outcome.name] : [])),
+    refusedCommands: requested.flatMap((outcome) => (outcome !== undefined && "refused" in outcome ? [outcome.refused] : [])),
+  };
 }
 
 /**
@@ -77,5 +104,5 @@ export function registerHost(
   if (identity.commands.length > 0) userHomeOf(environment);
   const recorded = provenanceToRecord(runtime, places, identity.id, provenance);
   recordRegistration(runtime, places, identity, recorded);
-  return { provenance: recorded, commands: requestCommands(runtime, places, identity, environment) };
+  return { provenance: recorded, ...requestCommands(runtime, places, identity, environment) };
 }

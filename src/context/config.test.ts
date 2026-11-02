@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildRuntime } from "./build.js";
-import { createFixture, manifestOf } from "./fixture.js";
-import type { Fixture } from "./fixture.js";
+import { createFixture, manifestOf } from "../__fixtures__/context.js";
+import type { Fixture } from "../__fixtures__/context.js";
 
 let fixture: Fixture;
 beforeEach(() => {
@@ -78,6 +78,13 @@ describe("config layers", () => {
     const shared = { a: 1 };
     await configOf().set("local", { left: shared, right: shared });
     expect(fixture.activity).toHaveLength(1);
+  });
+
+  it("keeps a persisted value and resolves when publishing its activity throws", async () => {
+    const throwingBus = { publish: () => { throw new Error("the bus broke"); }, subscribe: () => () => {} };
+    const config = buildRuntime(fixture.runtime, fixture.places, fixture.host, manifest, throwingBus, "2026-11-02T10:00:00.000Z").config;
+    await expect(config.set("local", "kept")).resolves.toBeUndefined();
+    expect(config.get("local")).toBe("kept");
   });
 
   it("publishes activity with the key, the previous value and the new one", async () => {

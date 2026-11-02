@@ -1,6 +1,7 @@
 import type { PluginManifest, UiComponent, UiNode, ViewDeclaration } from "@weivel/typescript";
 import { checkUiData } from "@weivel/typescript/host";
 import type { UiItem } from "@weivel/typescript/host";
+import type { ValidationIssue } from "@weivel/typescript/engine";
 import { presentItems } from "../lists.js";
 import type { RunningHost } from "../start.js";
 import { bindingTarget, deployedManifest } from "./binding-target.js";
@@ -74,13 +75,26 @@ function failed(detail: string, fix: string, path?: string): Outcome {
   return { state: "error", error: path === undefined ? { detail, fix } : { detail, fix, path } };
 }
 
-/** @implNote The node's own `chart` picks the branch, never the answer, so one answer carrying both reads as the node declares. */
+function isMeter(node: UiNode): boolean {
+  return node.chart === "meter";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * @implNote The node's own `chart` picks the branch, never the answer, so the branch it selects is
+ * checked on its own: an answer whose other branch is valid would otherwise pass the chart's `anyOf`.
+ */
+function issuesOf(node: UiNode, answer: unknown): ValidationIssue[] {
+  if (node.component !== "chart") return checkUiData(node.component, answer) ?? [];
+  if (isMeter(node)) return checkUiData("progress", answer) ?? [];
+  return checkUiData("chart", isRecord(answer) ? { series: answer.series } : answer) ?? [];
+}
+
 function chartData(node: UiNode, answer: Record<string, unknown>): Outcome {
-  const members = node.chart === "meter" ? MEASURE_MEMBERS : SERIES_MEMBERS;
-  const absent = members.find((member) => !(member in answer));
-  if (absent !== undefined) {
-    return failed(`a ${node.chart ?? "series"} chart reads ${members.join(" and ")}, and the answer has no ${absent}`, `answer ${members.join(" and ")} for this node`, absent);
-  }
+  const members = isMeter(node) ? MEASURE_MEMBERS : SERIES_MEMBERS;
   return { state: "ready", data: Object.fromEntries(members.map((member) => [member, answer[member]])) };
 }
 
@@ -95,7 +109,7 @@ function presentedAnswer(answer: unknown): unknown {
 }
 
 function checked(node: UiNode, answer: unknown): Outcome {
-  const issues = checkUiData(node.component, answer) ?? [];
+  const issues = issuesOf(node, answer);
   if (issues.length > 0) return failed(issues[0].message, issues[0].fix, issues[0].path);
   if (node.component === "chart") return chartData(node, answer as Record<string, unknown>);
   return { state: "ready", data: ITEMS_FAMILY.has(node.component) ? presentedAnswer(answer) : answer };

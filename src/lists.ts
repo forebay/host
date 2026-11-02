@@ -8,7 +8,8 @@ export interface Detector {
   detect(): boolean;
 }
 
-export type PresentedItem = UiItem & { unavailable?: true; action?: "install" };
+/** @implNote `install` is its own member, so it can never be read as one of the plugin's action ids. */
+export type PresentedItem = UiItem & { unavailable?: true; install?: true };
 
 const STATE_ORDER = ["installed", "detected", "available"] as const;
 
@@ -44,16 +45,34 @@ function asItems(ids: string[]): UiItem[] {
   return ids.map((id) => ({ id }));
 }
 
+/** @implNote A detector that throws could not say the thing is here, so it counts as not detected rather than failing the list. */
+function detects(detector: Detector): boolean {
+  try {
+    return detector.detect();
+  } catch {
+    return false;
+  }
+}
+
 export function pluginList(running: RunningHost, detectors: Detector[]): UiItem[] {
   const installed = installedIds(running);
-  const detected = detectors.filter((detector) => detector.detect()).map(({ id }) => id);
+  const detected = detectors.filter(detects).map(({ id }) => id);
   const available = running.bundles.list().map(({ id }) => id);
   return threeStateList(asItems(installed), asItems(detected), asItems(available));
 }
 
-/** @implNote A row that cannot be used offers only install, so an `action` it carried is replaced by design. */
+function isUnusable(entry: UiItem): boolean {
+  return entry.state === "detected" || entry.state === "available";
+}
+
+function asInstallable(entry: UiItem): PresentedItem {
+  const { action: _dropped, ...rest } = entry as UiItem & { action?: unknown };
+  return { ...rest, unavailable: true, install: true };
+}
+
+/** @implNote A row that cannot be used offers only install, so an `action` it carried is dropped by design. */
 export function presentItems(items: UiItem[]): PresentedItem[] {
-  return items.map((entry) => (entry.state === "detected" || entry.state === "available" ? { ...entry, unavailable: true, action: "install" } : entry));
+  return items.map((entry) => (isUnusable(entry) ? asInstallable(entry) : entry));
 }
 
 /**

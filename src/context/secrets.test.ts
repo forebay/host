@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildRuntime } from "./build.js";
-import { createFixture, manifestOf } from "./fixture.js";
-import type { Fixture } from "./fixture.js";
+import { createFixture, manifestOf } from "../__fixtures__/context.js";
+import type { Fixture } from "../__fixtures__/context.js";
 
 let fixture: Fixture;
 beforeEach(() => {

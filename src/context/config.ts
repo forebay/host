@@ -4,6 +4,8 @@ import type { Runtime } from "../runtime/open.js";
 import type { ActivityPublisher } from "./activity.js";
 import type { HostPlaces } from "./places.js";
 import { scopeOf } from "./scope.js";
+import { isSecretSetting, withoutSecretSettings, writeSecretSetting } from "./secret-settings.js";
+import type { SecretSettingStore } from "./secret-settings.js";
 
 function isPlainObject(value: object): boolean {
   const prototype = Object.getPrototypeOf(value);
@@ -31,23 +33,46 @@ function layerFor(manifest: PluginManifest, key: string): SettingsLayer {
   return declared ? (manifest.settings?.[key]?.layer ?? "portable") : "application";
 }
 
+/** @implNote The value is already persisted here, so a failing publish must not turn that into a rejected `set`. */
+function publishQuietly(publish: ActivityPublisher, detail: Record<string, unknown>): void {
+  try {
+    publish("config.set", detail);
+  } catch {
+    return;
+  }
+}
+
+/**
+ * A plugin's `config`. A setting its manifest declares `secret` goes to `secrets`, never to a
+ * settings file: it reads back through `get`, is left out of `all`, and its activity names only the
+ * key. Without a secret store, setting one is refused.
+ */
 export function buildConfig(
   runtime: Runtime,
   places: HostPlaces,
   host: HostIdentity,
   manifest: PluginManifest,
   publish: ActivityPublisher,
+  secrets: SecretSettingStore | undefined,
 ): PluginConfig {
   const scope = () => scopeOf(host, places, manifest);
   async function set(key: string, value: unknown, options?: ConfigSetOptions): Promise<void> {
+    if (isSecretSetting(manifest, key)) {
+      writeSecretSetting(secrets, key, value);
+      return publishQuietly(publish, { key, secret: true });
+    }
     if (!carriesAsJson(value)) throw new Error(`config.set("${key}"): the value cannot be carried as JSON`);
     const layer = options?.layer ?? layerFor(manifest, key);
     const { previous } = runtime.config.set({ ...scope(), key, value, layer });
-    publish("config.set", { key, from: previous, to: value });
+    publishQuietly(publish, { key, from: previous, to: value });
+  }
+  function get<T>(key: string): T | undefined {
+    if (isSecretSetting(manifest, key)) return secrets?.get(key) as T | undefined;
+    return runtime.config.get({ ...scope(), key }).value as T | undefined;
   }
   return {
-    all: () => runtime.config.all(scope()).values,
-    get: <T>(key: string) => runtime.config.get({ ...scope(), key }).value as T | undefined,
+    all: () => withoutSecretSettings(manifest, runtime.config.all(scope()).values),
+    get,
     set,
   };
 }

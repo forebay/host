@@ -13,7 +13,7 @@ jobs:
       runners: '["ubuntu-latest","windows-latest","macos-latest"]'
       extra_repositories: |
         weivel/model siblings/model 606988fb178b04d3f53835e6d982c09f31081ef1
-        weivel/typescript siblings/typescript 96e3ffe5c4c166b8dfc4b481ae15bda0af8fa95f
+        weivel/typescript siblings/typescript da571d8d60c569b0870bc35d12f5839a876969b5
         spisor/library siblings/library 0f0def8c6a0e45f9af2d4f3a2d3459c28ab36e27
       node_install: npm ci --prefix siblings/model && npm ci --prefix siblings/typescript && npm ci
       node_build: cmake -S siblings/library -B siblings/library/build && cmake --build siblings/library/build --config Release && npm run build --prefix siblings/typescript && npm run build
