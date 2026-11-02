@@ -93,9 +93,12 @@ function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, runtime: Runti
   const stopOnce = async () => {
     try {
       await loaded.stop();
-      await reconcile.stop();
     } finally {
-      runtime.close();
+      try {
+        await reconcile.stop();
+      } finally {
+        runtime.close();
+      }
     }
   };
   return () => (stopping ??= stopOnce());
