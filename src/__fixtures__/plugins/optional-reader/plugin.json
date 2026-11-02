@@ -1,0 +1,6 @@
+{
+  "id": "optional-reader",
+  "api": 1,
+  "version": "1.0.0",
+  "services": { "consumes": ["demo:greeting"] }
+}

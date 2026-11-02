@@ -13,10 +13,11 @@ export interface ResolvedPlugins {
 
 function missingFix({ id, pin }: EnabledPlugin, located: BundleEntry | null): string | null {
   if (located === null) return `install ${id}, or disable it`;
-  if (pin !== undefined && located.version !== pin) return `install ${id} ${pin}, or change plugins.${id}.pin`;
+  if (pin !== undefined && located.version !== null && located.version !== pin) return `install ${id} ${pin}, or change plugins.${id}.pin`;
   return null;
 }
 
+/** @implNote A bundle with no version is found rather than missing, so the scan reports it failed with its own fix. */
 export function resolveEnabled(enabled: readonly EnabledPlugin[], source: BundleSource): ResolvedPlugins {
   const resolved: ResolvedPlugins = { found: [], missing: [] };
   for (const plugin of enabled) {

@@ -1,8 +1,5 @@
 import { readFileSync } from "node:fs";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import { isRecord } from "./is-record.js";
 
 export function readManifestFile(manifestPath: string): unknown {
   return JSON.parse(readFileSync(manifestPath, "utf8"));

@@ -136,6 +136,37 @@ describe("startHost", () => {
     expect(handed[0].libraryCache).toBe(join(running.places.cache, "libraries"));
   });
 
+  it("does not start a default provider the settings explicitly disable", async () => {
+    writeSettings([{ key: "plugins.a.enabled", value: false, layer: "portable" }]);
+    expect((await started({ defaults: { "demo:greeting": "a" } })).status().active).toEqual([]);
+  });
+
+  it("answers the secrets reconcile outcome in status once it settles", async () => {
+    running = await startHost(options(), { reconcileSecrets: async () => ({ failed: "no secret store" }) });
+    await Promise.resolve();
+    expect(running.status().secrets).toEqual({ failed: "no secret store" });
+  });
+
+  it("answers no secrets outcome while the reconcile is still running", async () => {
+    running = await startHost(options(), {
+      reconcileSecrets: (_source, _places, signal) => new Promise((resolve) => signal.addEventListener("abort", () => resolve({ failed: "stopped" }))),
+    });
+    expect(running.status().secrets).toBeNull();
+  });
+
+  it("stops the reconcile worker when the host stops", async () => {
+    const signals: AbortSignal[] = [];
+    const host = await startHost(options(), {
+      reconcileSecrets: (_source, _places, signal) => {
+        signals.push(signal);
+        return new Promise((resolve) => signal.addEventListener("abort", () => resolve({ failed: "stopped" })));
+      },
+    });
+    expect(signals[0].aborted).toBe(false);
+    await host.stop();
+    expect(signals[0].aborted).toBe(true);
+  });
+
   it("stops twice without failing", async () => {
     enable("a");
     const host = await started();

@@ -32,6 +32,11 @@ describe("directoryBundles", () => {
     ]);
   });
 
+  it("answers a null version when plugin.json declares none, rather than inventing one", () => {
+    plugin("a", { id: "a", api: 1 });
+    expect(directoryBundles(root).locate("a")?.version).toBeNull();
+  });
+
   it("answers no entry path when the declared entry is not on disk", () => {
     plugin("a", { id: "a", api: 1, version: "1.0.0", entry: "index.js" });
     expect(directoryBundles(root).locate("a")?.entryPath).toBeNull();

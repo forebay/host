@@ -21,10 +21,15 @@ function mismatchOf(entry: BundleEntry, declaredId: string): PluginError {
   );
 }
 
+function unversionedOf(entry: BundleEntry): PluginError {
+  return pluginError(entry.id, `${entry.manifestPath}: declares no version`, 'declare a "version" in plugin.json');
+}
+
 function deployedOrRefusal(entry: BundleEntry, wellKnownServices: readonly string[]): DeployedPlugin | PluginError {
   try {
     const manifest = assertManifest(readManifestFile(entry.manifestPath), wellKnownServices);
     if (manifest.id !== entry.id) return mismatchOf(entry, manifest.id);
+    if (entry.version === null) return unversionedOf(entry);
     return { manifest, manifestPath: entry.manifestPath, entryPath: entry.entryPath };
   } catch (error) {
     return refusalOf(entry, error);
