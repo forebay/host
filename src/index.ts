@@ -8,7 +8,7 @@ export type { ReconcileAnswer } from "./context/reconcile-worker.js";
 export type { HostPlaces } from "./context/places.js";
 export type { HostIdentity } from "./identity.js";
 export { registerHost } from "./registration.js";
-export type { Provenance, RegisteredHost } from "./registration.js";
+export type { Provenance, RefusedCommand, RegisteredHost } from "./registration.js";
 export { hostsApi } from "./hosts.js";
 export type { HostSettings } from "./host-settings.js";
 export type { HostEntry, HostRemoval, HostsApi } from "./hosts.js";

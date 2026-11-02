@@ -18,7 +18,7 @@ import { scanOf } from "./plugins/scan.js";
 import { selectPlugins } from "./plugins/selection.js";
 import type { PluginSelection } from "./plugins/selection.js";
 import { registerHost } from "./registration.js";
-import type { Provenance } from "./registration.js";
+import type { Provenance, RegisteredHost } from "./registration.js";
 import { openRuntime } from "./runtime/open.js";
 import type { Runtime, RuntimeSource } from "./runtime/open.js";
 import { trackReconcile } from "./reconcile-tracker.js";
@@ -46,6 +46,8 @@ export interface RunningHost {
   /** The bus every plugin of this host publishes to, activity on `ACTIVITY_TOPIC` included. */
   events: RuntimeEvents;
   settings: HostSettings;
+  /** How this start registered the host, the commands it was given and any it was refused. */
+  registration: RegisteredHost;
   status(): HostStatus;
   stop(): Promise<void>;
 }
@@ -122,10 +124,10 @@ async function loadPlugins(
   environment: Record<string, string>,
   bus: RuntimeEvents,
 ) {
-  registerHost(runtime, places, options.identity, options.provenance, environment);
+  const registration = registerHost(runtime, places, options.identity, options.provenance, environment);
   const selection = selectionOf(runtime, places, options);
   const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection, bus));
-  return { selection, loaded };
+  return { registration, selection, loaded };
 }
 
 /** @implNote A start that throws stops the reconcile worker too, since no `stop` exists yet to reach it. */
@@ -135,7 +137,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
   const reconcile = trackReconcile((signal) => engine.reconcileSecrets(options.runtime, places, signal));
   const bus = eventBus();
   try {
-    const { selection, loaded } = await loadPlugins(runtime, places, options, engine, environment, bus);
+    const { registration, selection, loaded } = await loadPlugins(runtime, places, options, engine, environment, bus);
     return {
       loaded,
       places,
@@ -143,6 +145,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
       hosts: hostsApi(runtime, places, environment),
       events: bus,
       settings: hostSettings(runtime, places, options.identity),
+      registration,
       status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome()),
       stop: stopper(loaded, reconcile, runtime),
     };

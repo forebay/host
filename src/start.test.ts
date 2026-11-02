@@ -206,6 +206,25 @@ describe("startHost", () => {
     expect(host.settings.all()).toMatchObject({ theme: "light", density: "compact" });
   });
 
+  describe("a command the library refuses before writing anything", () => {
+    function withRefusedCommand(requiresCommand: boolean): HostIdentity {
+      return { ...identity, requiresCommand, commands: [{ name: "not a name", target: join(base, "bin", "thost") }] };
+    }
+
+    it("is recorded and does not stop a host that does not require a command", async () => {
+      const host = await started({ identity: withRefusedCommand(false) });
+      expect(host.registration.commands).toEqual([]);
+      expect(host.registration.refusedCommands).toHaveLength(1);
+      expect(host.registration.refusedCommands[0]).toMatchObject({ name: "not a name" });
+      expect(host.registration.refusedCommands[0].detail).toContain("not a portable file name");
+      expect(host.registration.refusedCommands[0].fix).not.toBe("");
+    });
+
+    it("stops the start of a host that requires a command", async () => {
+      await expect(startHost(options({ identity: withRefusedCommand(true) }))).rejects.toThrow(/not a portable file name/);
+    });
+  });
+
   it("stops twice without failing", async () => {
     enable("a");
     const host = await started();
