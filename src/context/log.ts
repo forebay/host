@@ -41,7 +41,11 @@ export function buildLogger(
   function error(message: string, cause?: unknown): void {
     const text = cause === undefined ? message : `${message}: ${causeText(cause)}`;
     write("error", text);
-    publish("log.error", { message: text });
+    try {
+      publish("log.error", { message: text });
+    } catch {
+      return;
+    }
   }
   return {
     debug: (message) => write("debug", message),

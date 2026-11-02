@@ -16,7 +16,8 @@ function buildPaths(runtime: Runtime, places: HostPlaces, host: HostIdentity, pl
     places: { portable: places.portable, cache: places.cache },
   });
   const { pluginCache, ...paths } = resolved;
-  return { ...paths, cache: pluginCache ?? resolved.cache };
+  if (pluginCache === undefined) throw new Error(`paths.resolve answered no plugin cache folder for "${pluginId}"`);
+  return { ...paths, cache: pluginCache };
 }
 
 export function buildRuntime(

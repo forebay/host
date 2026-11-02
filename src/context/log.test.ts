@@ -26,6 +26,13 @@ describe("logger", () => {
     expect(fixture.activity).toEqual([{ source: "alpha", kind: "log.error", detail: { message: "x: y" } }]);
   });
 
+  it("swallows a throwing activity bus", () => {
+    const throwing = { publish: () => { throw new Error("bus down"); }, subscribe: () => () => {} };
+    const { log } = buildRuntime(fixture.runtime, fixture.places, fixture.host, manifestOf("alpha"), throwing, "2026-11-02T10:00:00.000Z");
+    expect(() => log.error("x", new Error("y"))).not.toThrow();
+    expect(logContents()).toContain("[ERROR] x: y");
+  });
+
   it("swallows a failing write", () => {
     mkdirSync(fixture.host.home, { recursive: true });
     writeFileSync(join(fixture.host.home, "logs"), "a file where the log directory belongs");
