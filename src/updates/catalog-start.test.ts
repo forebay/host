@@ -43,4 +43,10 @@ describe("catalogStart", () => {
     catalogStart({ sources: [] }, places, "test-host", { plugins: { d: { enabled: false } } }, { "demo:greeting": "d" });
     expect(references()).toEqual({ run: {}, next: {} });
   });
+
+  it("records the host's own references beside its plugins", () => {
+    installed("a", "1.0.0");
+    catalogStart({ sources: [], references: { "forebay-host": "0.1.0", runtime: "0.1.0" } }, places, "test-host", { plugins: { a: { enabled: true } } }, {});
+    expect(references()).toEqual({ run: { "forebay-host": "0.1.0", runtime: "0.1.0", a: "1.0.0" }, next: {} });
+  });
 });

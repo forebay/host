@@ -16,6 +16,7 @@ import type { HostIdentity } from "./identity.js";
 import type { BundleSource } from "./plugins/bundle-source.js";
 import { scanOf } from "./plugins/scan.js";
 import { selectPlugins } from "./plugins/selection.js";
+import { processEnvironment } from "./process-environment.js";
 import type { PluginSelection } from "./plugins/selection.js";
 import { registerHost } from "./registration.js";
 import type { Provenance, RegisteredHost } from "./registration.js";
@@ -72,10 +73,6 @@ const ENGINE: HostEngine = {
   startPlugins,
   reconcileSecrets: reconcileSecretsInBackground,
 };
-
-function processEnvironment(): Record<string, string> {
-  return Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
-}
 
 /**
  * @implNote A service the host names, as one it consumes or one it has a default for, is a shared
@@ -145,7 +142,7 @@ async function loadPlugins(
   bus: RuntimeEvents,
 ) {
   const registration = registerHost(runtime, places, options.identity, options.provenance, environment);
-  const settings = hostSettings(runtime, places, options.identity).all();
+  const settings = hostSettings(runtime, places, options.identity.home).all();
   const origin = startBundles(settings, places, options);
   const selection = selectPlugins(settings, origin.bundles, options.consumes ?? [], options.defaults ?? {});
   const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection, bus));
@@ -172,7 +169,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
       bundles: origin.bundles,
       hosts: hostsApi(runtime, places, environment),
       events: bus,
-      settings: hostSettings(runtime, places, options.identity),
+      settings: hostSettings(runtime, places, options.identity.home),
       registration,
       status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome(), catalogStatus(origin.catalog, updates)),
       stop: stopper(loaded, reconcile, updates, runtime),

@@ -23,6 +23,8 @@ export interface HostCatalog {
   sources: CatalogSource[];
   transport?: CatalogTransport;
   fetcher?: Fetcher;
+  /** Versions the host runs from the cache beside its plugins (its own bundle, its libraries), recorded so no sweep removes them. */
+  references?: Record<string, string>;
 }
 
 export interface CatalogStart {
@@ -55,7 +57,8 @@ function candidatesOf(settings: Record<string, unknown>, defaults: Record<string
 export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: string, settings: Record<string, unknown>, defaults: Record<string, string>): CatalogStart {
   const enabled = candidatesOf(settings, defaults);
   const { run, fetch } = resolveVersions(currentCatalogs(catalog.sources, places.cache), enabled, installedVersions(places.cache));
-  recordReferences(places.state, hostId, { run, next: Object.fromEntries(fetch.map(({ id, version }) => [id, version])) });
+  const recorded = { ...catalog.references, ...run };
+  recordReferences(places.state, hostId, { run: recorded, next: Object.fromEntries(fetch.map(({ id, version }) => [id, version])) });
   const bundles = cacheBundleSource(places.cache, run);
   return {
     bundles,
@@ -69,7 +72,7 @@ export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: s
         fetcher: catalog.fetcher ?? defaultFetcher(),
         enabled,
         hostId,
-        run,
+        run: recorded,
         problems: () => bundles.problems(),
       }),
   };
