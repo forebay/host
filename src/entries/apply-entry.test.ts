@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
 import { bootEntryFile } from "../boot/boot-install.js";
@@ -173,7 +173,7 @@ describe("the OpenCode entry", () => {
 
     expect(treeOf(loader.home)).toEqual(["opencode.json", "plugins", join("plugins", `spisor-${LOADER_ID}.js`)]);
     const source = readFileSync(openCodeEntryFile(loader.home, LOADER_ID), "utf8");
-    expect(source).toContain(JSON.stringify(new URL(`file:///${bootEntryFile(places.cache).replace(/\\/g, "/").replace(/^\//, "")}`).href));
+    expect(fileURLToPath(JSON.parse(/^const BOOT_ENTRY = (.+);$/m.exec(source)?.[1] ?? "null"))).toBe(bootEntryFile(places.cache));
     expect(source).toContain("export const SpisorHost");
     expect(remove().drifted).toEqual([]);
     expect(treeOf(loader.home)).toEqual(["opencode.json"]);
