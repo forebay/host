@@ -20,6 +20,7 @@ export interface CatalogItem {
   versions: Record<string, CatalogVersion>;
   latest: string;
   application?: LoaderApplication;
+  installMethod?: string;
 }
 
 export interface Catalog {

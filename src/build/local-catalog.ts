@@ -102,6 +102,7 @@ function addFiles(version: CatalogVersion, input: CatalogInput, files: Record<st
 function itemFor(items: Catalog["items"], input: CatalogInput): CatalogItem {
   const item = items[input.output.id] ?? { kind: input.kind, versions: {}, latest: input.output.version };
   if (input.output.application !== undefined) item.application = input.output.application;
+  if (input.output.installMethod !== undefined) item.installMethod = input.output.installMethod;
   items[input.output.id] = item;
   return item;
 }

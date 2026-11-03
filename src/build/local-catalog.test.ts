@@ -66,6 +66,13 @@ describe("buildLocalCatalog", () => {
     expect(Object.keys(catalog.items.greeter?.versions ?? {}).sort()).toEqual(["1.10.0", "1.10.0-beta.1", "1.2.0"]);
   });
 
+  it("lists a plugin as the provider of the install method its manifest names", async () => {
+    const repository = pluginRepository(join(base, "repositories", "provider"), "greeter", { manifest: { installMethod: "fake" } });
+    const output = await bundlePlugin(repository, join(base, "bundled", "provider"));
+    const catalog = readBack(buildLocalCatalog([{ kind: "plugin", output }], join(base, "catalog")));
+    expect(catalog.items.greeter?.installMethod).toBe("fake");
+  });
+
   it("lists every copied file with its real hash and size", async () => {
     const catalog = readBack(buildLocalCatalog([{ kind: "plugin", output: await greeterAt("1.0.0") }], join(base, "catalog")));
     for (const reference of Object.values(catalog.items.greeter?.versions["1.0.0"]?.files ?? {})) {

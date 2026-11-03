@@ -34,7 +34,7 @@ export interface Runtime {
   registry: RegistryService;
   changes: Pick<ChangesService, "apply" | "reverse">;
   commands: CommandsService;
-  install: Pick<InstallService, "packages">;
+  install: Pick<InstallService, "packages" | "plan">;
   close(): void;
 }
 
