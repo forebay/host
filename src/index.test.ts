@@ -29,4 +29,9 @@ describe("the package entry", () => {
     }
     expect([startTakesOnlyOptions, reconcileTakesNoWorkerEntry, seamIsUnreachable, fetcherTakesNothing, storeTakesNoSeams, catalogCarriesNoStartChoice]).toEqual([true, true, undefined, true, true, true]);
   });
+
+  it("carries the boot path a loader starts a host from the cache through", () => {
+    expect(typeof entry.bootFromCache).toBe("function");
+    expect(typeof entry.hostLibraryReferences).toBe("function");
+  });
 });

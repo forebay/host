@@ -1,55 +1,42 @@
-import { currentPlatformKey } from "@weivel/typescript/host";
 import type { BundleLocation } from "../../cache/bundle-location.js";
-import { FOREBAY_HOST_ID, forebayHostIdentity } from "../../install/forebay-host.js";
-import { bootLibraries, hostLibrariesOf, KOFFI_ID, recordBootLibraries, resolveHostLibraries, RUNTIME_ID, verifiedRuntimeSource } from "../../install/host-libraries.js";
-import type { Provenance } from "../../registration.js";
-import type { HostLibraries } from "../../runtime/cached-runtime.js";
+import { bootFromCache, hostLibraryReferences } from "../../install/boot-from-cache.js";
+import type { CacheBoot } from "../../install/boot-from-cache.js";
+import { FOREBAY_HOST_ID, forebayHostIdentity, forebayHostProvenance } from "../../install/forebay-host.js";
 import { startHostWith } from "../../start.js";
 import { currentCatalogs } from "../../updates/current-catalogs.js";
 import type { HostReferences } from "../../updates/references.js";
-import { CommandRefusal } from "../command-refusal.js";
 import { installedHostAt, readHostSetup } from "../installed-host.js";
 import type { HostSetup } from "../installed-host.js";
 import type { CommandLineOutput } from "../output.js";
 
-function provenanceOf(location: BundleLocation): Provenance {
-  return {
-    method: "catalog",
-    version: location.version,
-    location: location.directory,
-    os: process.platform,
-    architecture: process.arch,
-    installedAt: new Date().toISOString(),
-  };
+function referencesFor(location: BundleLocation, boot: CacheBoot, setup: HostSetup): HostReferences {
+  return hostLibraryReferences({
+    cache: location.cache,
+    state: setup.places.state,
+    hostId: FOREBAY_HOST_ID,
+    catalog: currentCatalogs(setup.sources, location.cache),
+    settings: setup.settings,
+    loaded: boot.libraries,
+    running: { [FOREBAY_HOST_ID]: location.version },
+  });
 }
 
-function loadedLibraries(location: BundleLocation): HostLibraries {
-  const libraries = bootLibraries(location.cache, FOREBAY_HOST_ID, currentPlatformKey());
-  if (libraries !== undefined) return libraries;
-  throw new CommandRefusal(`no runtime and koffi are both installed for ${currentPlatformKey()} in ${location.cache}`, "run forebay-host install --catalog <path or url> again");
-}
-
-/** Resolves what the next start loads, records it, and answers the references that keep both it and what is loaded now. */
-function resolveForNextStart(location: BundleLocation, loaded: HostLibraries, setup: HostSetup): HostReferences {
-  const resolved = resolveHostLibraries(currentCatalogs(setup.sources, location.cache), setup.settings, location.cache, currentPlatformKey());
-  const next = hostLibrariesOf(resolved);
-  if (next !== undefined) recordBootLibraries(location.cache, FOREBAY_HOST_ID, next);
-  const changed = Object.fromEntries(Object.entries(resolved).filter(([id, version]) => loaded[id as keyof HostLibraries] !== version));
-  return { run: { [FOREBAY_HOST_ID]: location.version, [RUNTIME_ID]: loaded.runtime, [KOFFI_ID]: loaded.koffi }, next: changed };
-}
-
-/** Starts the installed host from the cache with no background check, prints its `HostStatus` as JSON, and stops it. */
+/**
+ * Starts the installed host from the cache with no background check, prints its `HostStatus` as JSON, and stops it.
+ *
+ * @implNote The install registered the host, and the first registration wins, so the provenance
+ * given here is used only for a host whose registration was lost.
+ */
 export async function statusCommand(bundleFile: string, environment: Record<string, string>, output: CommandLineOutput): Promise<void> {
   const location = installedHostAt(bundleFile);
-  const loaded = loadedLibraries(location);
-  const source = verifiedRuntimeSource(location.cache, loaded, currentPlatformKey());
-  const setup = readHostSetup(source, environment, location);
+  const boot = bootFromCache(location.cache, FOREBAY_HOST_ID);
+  const setup = readHostSetup(boot.runtime, environment, location);
   const running = await startHostWith(
     {
       identity: forebayHostIdentity(setup.places, location.version),
-      runtime: source,
-      catalog: { sources: setup.sources, references: resolveForNextStart(location, loaded, setup) },
-      provenance: provenanceOf(location),
+      runtime: boot.runtime,
+      catalog: { sources: setup.sources, references: referencesFor(location, boot, setup) },
+      provenance: forebayHostProvenance(location.cache, location.version, new Date()),
       environment,
     },
     {},

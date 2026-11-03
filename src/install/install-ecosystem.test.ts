@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
@@ -12,6 +12,7 @@ import type { Fetcher } from "../cache/fetcher.js";
 import type { HostPlaces } from "../context/places.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
 import { readReferences, recordReferences } from "../updates/references.js";
+import { bootstrapLibraries } from "./bootstrap-libraries.js";
 import { bootLibraries } from "./host-libraries.js";
 import { installEcosystem } from "./install-ecosystem.js";
 import type { InstallReport } from "./install-ecosystem.js";
@@ -51,6 +52,32 @@ function settings(): Record<string, unknown> {
   } finally {
     runtime.close();
   }
+}
+
+function layerSettings(layer: "application" | "portable"): Record<string, unknown> {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    const scope = layer === "application" ? { home: hostHome() } : { home: join(base, "no-home"), portable: places.portable };
+    return runtime.settings.all(scope).values;
+  } finally {
+    runtime.close();
+  }
+}
+
+function registeredProvenance(): Record<string, unknown> | undefined {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    return runtime.registry.get({ places, id: "forebay-host" }).registration?.provenance as Record<string, unknown> | undefined;
+  } finally {
+    runtime.close();
+  }
+}
+
+/** A second index beside the fixture's, so its relative urls still resolve. */
+function secondCatalog(): string {
+  const path = join(dirname(catalog.path), "second.json");
+  copyFileSync(catalog.path, path);
+  return path;
 }
 
 function setPortable(key: string, value: unknown): void {
@@ -216,5 +243,48 @@ describe("installEcosystem", () => {
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain(`build/koffi/${triplet}/koffi.node`);
   });
-});
 
+  it("records a local catalog source in the application layer, never the portable one", async () => {
+    await install(FIXTURE_PLUGINS);
+    expect(layerSettings("application").catalog).toEqual({ sources: [{ kind: "local", path: catalog.path }] });
+    expect(layerSettings("portable").catalog).toBeUndefined();
+  });
+
+  it("appends a catalog source not yet listed and never replaces the ones that are", async () => {
+    await install(FIXTURE_PLUGINS);
+    const second = secondCatalog();
+    await installEcosystem({ catalog: [{ kind: "local", path: second }], places, home: hostHome(), defaults: [] });
+    await install(FIXTURE_PLUGINS);
+    expect(settings().catalog).toEqual({ sources: [{ kind: "local", path: catalog.path }, { kind: "local", path: second }] });
+  });
+
+  it("records an https catalog source in the portable layer, beside a local one, reading the index only once", async () => {
+    await install(FIXTURE_PLUGINS);
+    const url = "https://catalog.example/catalog.json";
+    const bootstrap = await bootstrapLibraries([{ kind: "local", path: catalog.path }], places.cache, countingFetcher());
+    const report = await installEcosystem({ catalog: [{ kind: "https", url }], places, home: hostHome(), defaults: [], bootstrap });
+    expect(report.unavailable).toEqual([]);
+    expect(layerSettings("portable").catalog).toEqual({ sources: [{ kind: "https", url }] });
+    expect(settings().catalog).toEqual({ sources: [{ kind: "local", path: catalog.path }, { kind: "https", url }] });
+  });
+
+  it("installs from the bootstrap it is given instead of bootstrapping again", async () => {
+    const bootstrap = await bootstrapLibraries([{ kind: "local", path: catalog.path }], places.cache, countingFetcher());
+    const missing = { kind: "local" as const, path: join(base, "missing", "catalog.json") };
+    const report = await installEcosystem({ catalog: [missing], places, home: hostHome(), defaults: FIXTURE_PLUGINS, bootstrap });
+    expect(report.unavailable).toEqual([]);
+    expect(ids(report)).toEqual(["announcer", "forebay-host", "koffi", "runtime", "viewer"]);
+  });
+
+  it("registers the host at install, so its provenance carries the install time and a later status keeps it", async () => {
+    const before = Date.now();
+    await install(FIXTURE_PLUGINS);
+    const provenance = registeredProvenance();
+    expect(provenance).toMatchObject({ method: "catalog", version: catalog.hostVersion, location: join(places.cache, "bundles", "forebay-host", catalog.hostVersion) });
+    const installedAt = Date.parse(String(provenance?.installedAt));
+    expect(installedAt).toBeGreaterThanOrEqual(before - 1000);
+    expect(installedAt).toBeLessThanOrEqual(Date.now());
+    runHost("status");
+    expect(registeredProvenance()).toEqual(provenance);
+  });
+});
