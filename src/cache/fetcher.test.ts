@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CacheRefusal } from "./cache-refusal.js";
-import { defaultFetcher } from "./fetcher.js";
+import { defaultFetcher, fetcherWith } from "./fetcher.js";
 
 let directory: string;
 
@@ -34,19 +34,23 @@ describe("defaultFetcher", () => {
   });
 
   it("fetches an https url through the fetch it is given", async () => {
-    const fetcher = defaultFetcher({ fetchImplementation: answering(new Response("served")) });
+    const fetcher = fetcherWith({ fetchImplementation: answering(new Response("served")) });
     expect(Buffer.from(await fetcher.fetch("https://e.com/p.js")).toString()).toBe("served");
   });
 
   it("refuses an https answer that is not ok, naming the status", async () => {
-    const fetcher = defaultFetcher({ fetchImplementation: answering(new Response("gone", { status: 404 })) });
+    const fetcher = fetcherWith({ fetchImplementation: answering(new Response("gone", { status: 404 })) });
     await expect(fetcher.fetch("https://e.com/p.js")).rejects.toThrow(/404/);
   });
 
   it("refuses an https fetch that outlives its deadline", async () => {
     const never: typeof fetch = () => new Promise(() => {});
-    const fetcher = defaultFetcher({ fetchImplementation: never, deadlineMs: 20 });
+    const fetcher = fetcherWith({ fetchImplementation: never, deadlineMs: 20 });
     await expect(fetcher.fetch("https://e.com/p.js")).rejects.toThrow(/did not finish within 20 ms/);
+  });
+
+  it("refuses a file url that names a host, which on Windows is a network share", async () => {
+    await expect(defaultFetcher().fetch("file://server/share/p.js")).rejects.toThrow(/names the host server/);
   });
 
   it("refuses any other scheme", async () => {

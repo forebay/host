@@ -38,8 +38,9 @@ export { catalogSources, mergeCatalogs, readCatalogSources } from "./catalog/sou
 export type { CatalogSource, CatalogSourceReading, MergedCatalog, SkippedSource } from "./catalog/sources.js";
 export { CacheRefusal } from "./cache/cache-refusal.js";
 export { defaultFetcher } from "./cache/fetcher.js";
-export type { Fetcher, FetcherOptions } from "./cache/fetcher.js";
+export type { Fetcher } from "./cache/fetcher.js";
 export { storeFile } from "./cache/store.js";
 export { installVersion } from "./cache/install-version.js";
 export type { InstalledVersion, InstallRefusal } from "./cache/install-version.js";
 export { cacheBundleSource } from "./cache/cache-bundle-source.js";
+export type { BundleProblem, CacheBundleSource } from "./cache/cache-bundle-source.js";

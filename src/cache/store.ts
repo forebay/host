@@ -1,20 +1,17 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { FileRef } from "../catalog/catalog.js";
 import { CacheRefusal } from "./cache-refusal.js";
 import type { Fetcher } from "./fetcher.js";
+import { sha256Of } from "./sha256.js";
 
 type Rename = (from: string, to: string) => Promise<void>;
 
-/** Test seams into storing; a host passes none. */
+/** @internal Test seams into storing, reached through {@link storeFileWith}; not part of the package entry. */
 export interface StoreSeams {
   /** Replaces the rename that moves verified bytes into place, so a test can make it fail. */
   rename?: Rename;
-}
-
-function sha256Of(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function matches(bytes: Uint8Array, reference: FileRef): boolean {
@@ -46,25 +43,35 @@ function verified(bytes: Uint8Array, reference: FileRef): Uint8Array {
 }
 
 /**
- * Moves verified bytes into place, accepting a destination another process already put there.
+ * Moves bytes into place, accepting a destination another process already filled with the same bytes.
  *
  * @implNote Written beside its final name and renamed, so a run killed mid-write leaves a stray
  * temporary file rather than a truncated file under the real name. On Windows a rename onto a file
  * another process has loaded fails with `EPERM`; when two hosts share one cache that file is the
- * very one being written, so the destination is re-hashed and accepted when it matches.
+ * very one being written, so the destination is re-read and accepted when it holds these bytes.
  */
-async function storeVerified(path: string, bytes: Uint8Array, reference: FileRef, renameInto: Rename): Promise<void> {
+export async function writeIntoPlace(path: string, bytes: Uint8Array, renameInto: Rename = rename): Promise<void> {
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
     await writeFile(temporary, bytes);
     await renameInto(temporary, path);
   } catch (error) {
     const present = await readIfPresent(path);
-    if (present && matches(present, reference)) return;
+    if (present && Buffer.from(present).equals(bytes)) return;
     throw new CacheRefusal(`${path} could not be written: ${errorCodeOf(error)}`, "free the cached file or point SPISOR_CACHE at a writable directory, then try again");
   } finally {
     await rm(temporary, { force: true });
   }
+}
+
+/** @internal {@link storeFile} with its test seams; not part of the package entry. */
+export async function storeFileWith(reference: FileRef, path: string, fetcher: Fetcher, seams: StoreSeams): Promise<"cached" | "fetched"> {
+  const cached = await readIfPresent(path);
+  if (cached && matches(cached, reference)) return "cached";
+  const bytes = verified(await fetcher.fetch(reference.url), reference);
+  await mkdir(dirname(path), { recursive: true });
+  await writeIntoPlace(path, bytes, seams.rename);
+  return "fetched";
 }
 
 /**
@@ -73,11 +80,6 @@ async function storeVerified(path: string, bytes: Uint8Array, reference: FileRef
  * @remarks A cached file is hashed on every read and never trusted for existing; fetched bytes
  * that do not match are refused before anything is written.
  */
-export async function storeFile(reference: FileRef, path: string, fetcher: Fetcher, seams: StoreSeams = {}): Promise<"cached" | "fetched"> {
-  const cached = await readIfPresent(path);
-  if (cached && matches(cached, reference)) return "cached";
-  const bytes = verified(await fetcher.fetch(reference.url), reference);
-  await mkdir(dirname(path), { recursive: true });
-  await storeVerified(path, bytes, reference, seams.rename ?? rename);
-  return "fetched";
+export function storeFile(reference: FileRef, path: string, fetcher: Fetcher): Promise<"cached" | "fetched"> {
+  return storeFileWith(reference, path, fetcher, {});
 }

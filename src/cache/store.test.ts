@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FileRef } from "../catalog/catalog.js";
 import type { Fetcher } from "./fetcher.js";
-import { storeFile } from "./store.js";
+import { storeFile, storeFileWith } from "./store.js";
 
 let cache: string;
 
@@ -82,7 +82,7 @@ describe("storeFile", () => {
       writeFileSync(path, CONTENT);
       throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
     };
-    expect(await storeFile(referenceTo(CONTENT), path, serving(CONTENT), { rename: lockedByAnotherHost })).toBe("fetched");
+    expect(await storeFileWith(referenceTo(CONTENT), path, serving(CONTENT), { rename: lockedByAnotherHost })).toBe("fetched");
     expect(readdirSync(cache)).toEqual(["p.js"]);
   });
 
@@ -92,7 +92,7 @@ describe("storeFile", () => {
       writeFileSync(path, "other");
       throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
     };
-    await expect(storeFile(referenceTo(CONTENT), path, serving(CONTENT), { rename: lockedWithOtherBytes })).rejects.toThrow(/EPERM/);
+    await expect(storeFileWith(referenceTo(CONTENT), path, serving(CONTENT), { rename: lockedWithOtherBytes })).rejects.toThrow(/EPERM/);
     expect(readdirSync(cache)).toEqual(["p.js"]);
   });
 
