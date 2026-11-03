@@ -81,3 +81,9 @@ export function readReferences(state: string): HostReferences[] {
     return references === undefined ? [] : [references];
   });
 }
+
+/** The versions `hostId` recorded, or empty maps when it recorded none readable. */
+export function readHostReferences(state: string, hostId: string): HostReferences {
+  const text = readIfFile(referenceFile(state, hostId));
+  return (text === undefined ? undefined : referencesOf(text)) ?? { run: {}, next: {} };
+}

@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
 import { bundleHost } from "../build/bundle-host.js";
@@ -15,6 +15,9 @@ import { pluginRepository } from "./plugin-repository.js";
 /** A platform no runner is, so an item built only for it has no build for this one. */
 export const ELSEWHERE_PLATFORM = "aix-ppc64";
 
+export const RUNTIME_VERSION = "0.1.0";
+export const OLDER_RUNTIME_VERSION = "0.0.9";
+
 export interface EcosystemCatalog {
   path: string;
   hostVersion: string;
@@ -25,14 +28,19 @@ async function pluginInput(workspace: string, id: string, platform?: string): Pr
   return platform === undefined ? { kind: "plugin", output } : { kind: "plugin", output, platform };
 }
 
-/** @implNote Only this machine's sibling build exists, so the catalog lists the runtime for this platform alone. */
-function runtimeInput(workspace: string): CatalogInput {
+/**
+ * The sibling runtime build, its declaration naming `version`.
+ *
+ * @implNote Only this machine's sibling build exists, so the catalog lists the runtime for this platform alone.
+ */
+function runtimeInput(workspace: string, version: string): CatalogInput {
   const platform = currentPlatformKey();
   const source = siblingRuntime(REPOSITORY_ROOT);
-  const directory = join(workspace, "runtime", platform);
+  const directory = join(workspace, "runtime", version, platform);
   mkdirSync(directory, { recursive: true });
   copyFileSync(source.binaryPath, join(directory, runtimeBinaryName(platform)));
-  copyFileSync(source.declarationPath, join(directory, basename(source.declarationPath)));
+  const declaration = { ...JSON.parse(readFileSync(source.declarationPath, "utf8")), version };
+  writeFileSync(join(directory, basename(source.declarationPath)), JSON.stringify(declaration, null, 2));
   return { kind: "library", output: libraryDirectoryOutput("runtime", directory), platform };
 }
 
@@ -43,14 +51,15 @@ function koffiInput(workspace: string): CatalogInput {
 }
 
 /**
- * A local catalog of the host bundle, the runtime and koffi for this platform, the `announcer` and
+ * A local catalog of the host bundle, the runtime at two versions and koffi for this platform, the `announcer` and
  * `viewer` fixture plugins, and `rival` built for {@link ELSEWHERE_PLATFORM} only.
  */
 export async function ecosystemCatalog(workspace: string): Promise<EcosystemCatalog> {
   const host = await bundleHost(join(workspace, "host"));
   const inputs: CatalogInput[] = [
     { kind: "host", output: host },
-    runtimeInput(workspace),
+    runtimeInput(workspace, RUNTIME_VERSION),
+    runtimeInput(workspace, OLDER_RUNTIME_VERSION),
     koffiInput(workspace),
     await pluginInput(workspace, "viewer"),
     await pluginInput(workspace, "announcer"),

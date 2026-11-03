@@ -17,6 +17,17 @@ function installed(id: string, version: string, marked = true): string {
   return directory;
 }
 
+function installedLibrary(id: string, version: string, platform: string, marked = true): void {
+  const directory = join(cache, "libraries", id, version, platform);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "library.json"), "{}");
+  if (marked) writeFileSync(join(directory, ".installed.json"), JSON.stringify({ files: {} }));
+}
+
+function libraryPresent(id: string, version: string, platform: string): boolean {
+  return existsSync(join(cache, "libraries", id, version, platform));
+}
+
 function present(id: string, version: string): boolean {
   return existsSync(join(cache, "bundles", id, version));
 }
@@ -80,4 +91,20 @@ describe("sweepCache", () => {
   it("answers nothing removed for a cache with no bundles", () => {
     expect(sweepCache(cache, state)).toEqual({ removed: [] });
   });
+
+  it("sweeps library versions per platform like bundles, keeping the referenced and the newest", () => {
+    for (const version of ["0.1.0", "0.2.0", "0.3.0", "0.4.0"]) installedLibrary("runtime", version, "linux-x64");
+    installedLibrary("runtime", "0.1.0", "win32-x64");
+    recordReferences(state, "forebay-host", { run: { runtime: "0.2.0" }, next: {} });
+    expect(sweepCache(cache, state).removed.sort()).toEqual(["runtime@0.1.0 for linux-x64", "runtime@0.3.0 for linux-x64"]);
+    expect(["0.1.0", "0.2.0", "0.3.0", "0.4.0"].map((version) => libraryPresent("runtime", version, "linux-x64"))).toEqual([false, true, false, true]);
+    expect(libraryPresent("runtime", "0.1.0", "win32-x64")).toBe(true);
+  });
+
+  it("leaves a library version with no completion marker alone", () => {
+    installedLibrary("koffi", "1.0.0", "linux-x64", false);
+    installedLibrary("koffi", "2.0.0", "linux-x64");
+    expect(sweepCache(cache, state).removed).toEqual([]);
+  });
 });
+

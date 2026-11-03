@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { currentPlatformKey, openLibrary, parseDeclaration, servicesOf } from "@weivel/typescript/host";
 import type { LibraryDeclaration, LoadedLibrary } from "@weivel/typescript/host";
+import { useKoffiFrom } from "./cached-koffi.js";
 import { runtimeBinaryName } from "./cached-runtime.js";
 import type {
   ChangesService,
@@ -18,6 +19,8 @@ import type {
 export interface RuntimeSource {
   binaryPath: string;
   declarationPath: string;
+  /** The cached koffi the host bundle loads the runtime through; unset where koffi is an installed package. */
+  koffiDirectory?: string;
 }
 
 export interface Runtime {
@@ -54,6 +57,7 @@ function serviceOf<Service>(library: LoadedLibrary, declaration: LibraryDeclarat
 }
 
 export function openRuntime(source: RuntimeSource): Runtime {
+  if (source.koffiDirectory !== undefined) useKoffiFrom(source.koffiDirectory);
   const declaration = parseDeclaration(readFileSync(source.declarationPath, "utf8"));
   const library = openLibrary(source.binaryPath, declaration);
   const service = <Service>(id: string) => serviceOf<Service>(library, declaration, id);

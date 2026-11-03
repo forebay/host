@@ -37,6 +37,8 @@ export interface UpdatePlan {
   hostId: string;
   /** The versions this start runs, recorded again beside what the update schedules for the next. */
   run: Record<string, string>;
+  /** Versions recorded as scheduled for the next start beside what the update schedules, so no sweep takes them. */
+  kept?: Record<string, string>;
   /** Read once the update starts, after the plugins have started, so every damaged version has been met. */
   problems: () => BundleProblem[];
 }
@@ -110,7 +112,7 @@ async function update(plan: UpdatePlan, problems: BundleProblem[], signal: Abort
   }
   const catalog = currentCatalogs(plan.sources, plan.cache);
   const targets = targetsOf(plan, catalog, problems);
-  recordReferences(plan.state, plan.hostId, { run: plan.run, next: nextOf(targets, plan.run) });
+  recordReferences(plan.state, plan.hostId, { run: plan.run, next: { ...plan.kept, ...nextOf(targets, plan.run) } });
   for (const target of targets) {
     if (signal.aborted) return;
     await install(plan, catalog, target, fetcher, signal, progress);

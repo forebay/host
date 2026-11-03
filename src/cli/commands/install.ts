@@ -1,12 +1,14 @@
 import { resolve } from "node:path";
+import { currentPlatformKey } from "@weivel/typescript/host";
 import { defaultFetcher } from "../../cache/fetcher.js";
 import type { CatalogSource } from "../../catalog/sources.js";
+import { bootstrapLibraries } from "../../install/bootstrap-libraries.js";
+import type { Bootstrap } from "../../install/bootstrap-libraries.js";
 import { forebayHostHome } from "../../install/forebay-host.js";
+import { KOFFI_ID, RUNTIME_ID, verifiedRuntimeSource } from "../../install/host-libraries.js";
 import { installEcosystem } from "../../install/install-ecosystem.js";
-import { installFoundation, RUNTIME_ID } from "../../install/install-foundation.js";
-import type { Foundation } from "../../install/install-foundation.js";
 import { mergeReports } from "../../install/install-report.js";
-import { cachedRuntime } from "../../runtime/cached-runtime.js";
+import type { HostLibraries } from "../../runtime/cached-runtime.js";
 import { CommandRefusal } from "../command-refusal.js";
 import { UsageError } from "../command-line.js";
 import { installedHostAt, readHostSetup } from "../installed-host.js";
@@ -25,15 +27,18 @@ function catalogSourceOf(catalog: string): CatalogSource {
   return { kind: "local", path: resolve(catalog) };
 }
 
-function runtimeVersionOf(foundation: Foundation): string {
-  const version = foundation.versions[RUNTIME_ID];
-  if (version !== undefined) return version;
-  const refused = foundation.report.unavailable.find(({ id }) => id === RUNTIME_ID || id === "catalog");
-  throw new CommandRefusal(`the runtime could not be installed: ${refused?.detail ?? "the catalog lists no runtime"}`, refused?.fix ?? "install from a catalog that lists the runtime library");
+function librariesOf(bootstrap: Bootstrap): HostLibraries {
+  if (bootstrap.libraries !== undefined) return bootstrap.libraries;
+  const refused = bootstrap.report.unavailable.find(({ id }) => id === RUNTIME_ID || id === KOFFI_ID || id === "catalog");
+  throw new CommandRefusal(
+    `the runtime and koffi could not be installed: ${refused?.detail ?? "the catalog lists neither"}`,
+    refused?.fix ?? "install from a catalog that lists the runtime and koffi libraries",
+  );
 }
 
 /**
- * Installs the ecosystem from a catalog into the cache the running host is installed in, and prints the report as JSON.
+ * Installs the ecosystem from a catalog into the cache the running host is installed in, and prints
+ * the report as JSON; each `--plugin` is installed and enabled whatever the settings say.
  *
  * @implNote The runtime and koffi are installed first, beside the bundle, because the places are the
  * runtime's answer: only then can the runtime say where the settings are.
@@ -42,10 +47,11 @@ export async function installCommand(given: InstallArguments, bundleFile: string
   const location = installedHostAt(bundleFile);
   const sources = [catalogSourceOf(given.catalog)];
   const fetcher = defaultFetcher();
-  const foundation = await installFoundation(sources, location.cache, fetcher);
-  const { places } = readHostSetup(cachedRuntime(location.cache, runtimeVersionOf(foundation)), environment, location);
-  const installed = await installEcosystem({ catalog: sources, places, home: forebayHostHome(places), defaults: given.plugins, fetcher });
-  const report = mergeReports(foundation.report, installed);
+  const bootstrap = await bootstrapLibraries(sources, location.cache, fetcher);
+  const source = verifiedRuntimeSource(location.cache, librariesOf(bootstrap), currentPlatformKey());
+  const { places } = readHostSetup(source, environment, location);
+  const installed = await installEcosystem({ catalog: sources, places, home: forebayHostHome(places), defaults: [], requested: given.plugins, fetcher });
+  const report = mergeReports(bootstrap.report, installed);
   output.out(JSON.stringify(report, null, 2));
   if (report.unavailable.length === 0) return;
   throw new CommandRefusal(`${report.unavailable.map(({ id }) => id).join(", ")} could not be installed`, "see each item's fix under unavailable above, then install again");
