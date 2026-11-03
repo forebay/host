@@ -1,4 +1,4 @@
-import type { Catalog } from "./catalog.js";
+import type { Catalog, CatalogItem } from "./catalog.js";
 
 export type CatalogSource = { kind: "local"; path: string } | { kind: "https"; url: string };
 
@@ -47,10 +47,10 @@ export function catalogSources(settings: Record<string, unknown>): CatalogSource
 }
 
 export function mergeCatalogs(catalogs: Array<{ source: CatalogSource; catalog: Catalog }>): MergedCatalog {
-  const merged: MergedCatalog = { catalog: { format: 1, items: {} }, shadowed: [] };
+  const merged: MergedCatalog = { catalog: { format: 1, items: Object.create(null) as Record<string, CatalogItem> }, shadowed: [] };
   for (const { source, catalog } of catalogs) {
     for (const [id, item] of Object.entries(catalog.items)) {
-      if (id in merged.catalog.items) merged.shadowed.push({ id, source });
+      if (Object.hasOwn(merged.catalog.items, id)) merged.shadowed.push({ id, source });
       else merged.catalog.items[id] = item;
     }
   }

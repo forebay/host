@@ -1,4 +1,5 @@
 import { validateCatalogIndex } from "./schema.generated.js";
+import { resolveWithinOrigin } from "./urls.js";
 
 export interface FileRef {
   url: string;
@@ -30,49 +31,75 @@ export interface CatalogRefusal {
 }
 
 const SCHEMA_FIXES: Record<string, string> = {
-  pattern: "use a 64-character lowercase hex sha256, and a file key that is a relative path with / separators, no .. segment and no leading /",
+  pattern: "use the shape the schema's pattern requires: a plugin-style id, a semver version, a 64-character lowercase hex sha256, or a file key of non-empty relative segments with / separators",
   enum: "use one of the values the schema lists for this member",
   required: "add the missing member",
   const: "set the member to the value the schema requires",
-  anyOf: "give the version a files member, a platforms member, or both",
   type: "give the member the type the schema requires",
   minimum: "use a value of at least the schema's minimum",
   minLength: "give the member a non-empty value",
 };
+
+const NEITHER_FILES_NOR_PLATFORMS_FIX = "list files, platforms, or both";
+
+export type CatalogReading = { ok: true; catalog: Catalog } | { ok: false; refusal: CatalogRefusal };
 
 interface SchemaError {
   instancePath: string;
   keyword: string;
   message?: string;
   params: Record<string, unknown>;
+  propertyName?: string;
 }
 
 function refusalFor(error: SchemaError): CatalogRefusal {
   const missing = typeof error.params.missingProperty === "string" ? `/${error.params.missingProperty}` : "";
-  const named = typeof error.params.propertyName === "string" ? `/${error.params.propertyName}` : "";
+  const named = typeof error.propertyName === "string" ? `/${error.propertyName}` : "";
+  const fix = error.keyword === "anyOf" ? NEITHER_FILES_NOR_PLATFORMS_FIX : SCHEMA_FIXES[error.keyword] ?? "correct the member the path names";
+  return { detail: `the catalog index ${error.message ?? "is invalid"}`, fix, path: `${error.instancePath}${missing}${named}` };
+}
+
+function mostSpecificError(errors: SchemaError[]): SchemaError {
+  return errors.find((error) => error.keyword === "anyOf") ?? (errors[0] as SchemaError);
+}
+
+function refuse(refusal: CatalogRefusal): CatalogReading {
+  return { ok: false, refusal };
+}
+
+function resolveFiles(files: Record<string, FileRef> | undefined, origin: string): string | undefined {
+  for (const [key, reference] of Object.entries(files ?? {})) {
+    const resolved = resolveWithinOrigin(reference.url, origin);
+    if (resolved === undefined) return key;
+    reference.url = resolved;
+  }
+  return undefined;
+}
+
+function refusalForUrl(id: string, version: string, key: string, origin: string): CatalogRefusal {
   return {
-    detail: `the catalog index ${error.message ?? "is invalid"}`,
-    fix: SCHEMA_FIXES[error.keyword] ?? "correct the member the path names",
-    path: `${error.instancePath}${missing}${named}`,
+    detail: `the url of file ${key} in ${id}@${version} leaves its source (resolved against ${origin})`,
+    fix: "use an https url under an https index, or a file url inside the index's own directory under a file index",
+    path: `/items/${id}/versions/${version}`,
   };
 }
 
-function absolute(url: string, origin: string): string {
-  return new URL(url, origin).href;
-}
-
-function resolveFiles(files: Record<string, FileRef> | undefined, origin: string): void {
-  for (const reference of Object.values(files ?? {})) reference.url = absolute(reference.url, origin);
-}
-
-function resolveVersion(version: CatalogVersion, origin: string): void {
-  resolveFiles(version.files, origin);
-  for (const platform of Object.values(version.platforms ?? {})) resolveFiles(platform.files, origin);
+function resolveCatalogUrls(catalog: Catalog, origin: string): CatalogRefusal | undefined {
+  for (const [id, item] of Object.entries(catalog.items)) {
+    for (const [name, version] of Object.entries(item.versions)) {
+      const platformFiles = Object.values(version.platforms ?? {}).map((platform) => platform.files);
+      for (const files of [version.files, ...platformFiles]) {
+        const offending = resolveFiles(files, origin);
+        if (offending !== undefined) return refusalForUrl(id, name, offending, origin);
+      }
+    }
+  }
+  return undefined;
 }
 
 function unknownLatest(catalog: Catalog): CatalogRefusal | undefined {
   for (const [id, item] of Object.entries(catalog.items)) {
-    if (item.versions[item.latest] === undefined) {
+    if (!Object.hasOwn(item.versions, item.latest)) {
       return {
         detail: `item ${id} names latest version ${item.latest}, which it does not list`,
         fix: "set latest to one of the item's versions",
@@ -83,9 +110,9 @@ function unknownLatest(catalog: Catalog): CatalogRefusal | undefined {
   return undefined;
 }
 
-function parseJson(text: string): unknown | CatalogRefusal {
+function parseJson(text: string): { value: unknown } | CatalogRefusal {
   try {
-    return JSON.parse(text);
+    return { value: JSON.parse(text) };
   } catch (error) {
     return { detail: `the catalog index is not valid JSON: ${(error as Error).message}`, fix: "serve the index as a JSON document" };
   }
@@ -95,19 +122,11 @@ function parseJson(text: string): unknown | CatalogRefusal {
  * @implNote A relative `url` resolves against `origin`, the index's own URL, so a catalog of
  * local build outputs can name the files that sit beside it without knowing where it is mounted.
  */
-export function readCatalog(text: string, origin: string): Catalog | CatalogRefusal {
+export function readCatalog(text: string, origin: string): CatalogReading {
   const parsed = parseJson(text);
-  if (parsed !== null && typeof parsed === "object" && "fix" in parsed && "detail" in parsed) return parsed as CatalogRefusal;
-  if (!validateCatalogIndex(parsed)) return refusalFor((validateCatalogIndex.errors as SchemaError[])[0] as SchemaError);
-  const catalog = parsed as Catalog;
-  const latestRefusal = unknownLatest(catalog);
-  if (latestRefusal !== undefined) return latestRefusal;
-  try {
-    for (const item of Object.values(catalog.items)) {
-      for (const version of Object.values(item.versions)) resolveVersion(version, origin);
-    }
-  } catch {
-    return { detail: `a file url cannot be resolved against the origin ${origin}`, fix: "give the index an absolute origin URL, or absolute file urls" };
-  }
-  return catalog;
+  if (!("value" in parsed)) return refuse(parsed);
+  if (!validateCatalogIndex(parsed.value)) return refuse(refusalFor(mostSpecificError(validateCatalogIndex.errors as SchemaError[])));
+  const catalog = parsed.value as Catalog;
+  const refusal = unknownLatest(catalog) ?? resolveCatalogUrls(catalog, origin);
+  return refusal === undefined ? { ok: true, catalog } : refuse(refusal);
 }

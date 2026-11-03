@@ -47,6 +47,12 @@ describe("mergeCatalogs", () => {
     expect(merged.shadowed).toEqual([{ id: "x", source: second }]);
   });
 
+  it("treats an inherited object member name as absent", () => {
+    const merged = mergeCatalogs([{ source: first, catalog: catalog({ constructor: item("1") }) }]);
+    expect(merged.shadowed).toEqual([]);
+    expect(Object.hasOwn(merged.catalog.items, "constructor")).toBe(true);
+  });
+
   it("merges nothing into an empty catalog", () => {
     expect(mergeCatalogs([])).toEqual({ catalog: { format: 1, items: {} }, shadowed: [] });
   });
