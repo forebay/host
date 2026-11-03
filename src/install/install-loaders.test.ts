@@ -156,6 +156,21 @@ describe("installLoaders without commands", () => {
     expect(registration("absent-host")).toBeUndefined();
   });
 
+  it("writes the entry of each loader whose application has one, reports one without it, and removing the loader takes the entry away", async () => {
+    const catalog = await catalogOf([{ id: "claude-test-loader", applicationId: "claude", pathCommands: NO_COMMANDS }, ...TWO]);
+    const report = reportOf([{ id: "claude", state: "installed" }, { id: "alpha", state: "installed" }]);
+    const claudeHome = join(base, "user", "homes", "claude");
+    mkdirSync(claudeHome, { recursive: true });
+    await install(catalog, report);
+
+    expect(report.loaders.map(({ id, entry }) => [id, entry.written])).toEqual([["claude-test-loader", true], ["alpha-loader", false]]);
+    expect(report.loaders[1]?.entry).toEqual({ written: false, detail: expect.stringContaining("alpha") });
+    expect(JSON.parse(readFileSync(join(claudeHome, "settings.json"), "utf8"))).toMatchObject({ enabledPlugins: { "spisor@spisor": true } });
+
+    hostsApi(runtime, places, environment).remove("claude-test-loader");
+    expect(readdirSync(claudeHome)).toEqual([]);
+  });
+
   it("keeps the first install's provenance on a second install", async () => {
     const catalog = await catalogOf(TWO);
     await install(catalog, reportOf([{ id: "alpha", state: "installed" }]));

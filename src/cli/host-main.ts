@@ -7,7 +7,10 @@ import { CommandRefusal } from "./command-refusal.js";
 import { isRunDirectly, runCommands, UsageError } from "./command-line.js";
 import type { Refusal } from "./command-line.js";
 import { launchCommand } from "../launch/launch.js";
+import { sessionHostCommand } from "../launch/session-host.js";
+import type { SessionHost } from "../launch/session-host.js";
 import { backgroundCommand } from "./commands/background.js";
+import { hookCommand } from "./commands/hook.js";
 import { installCommand } from "./commands/install.js";
 import { statusCommand } from "./commands/status.js";
 import { PROCESS_OUTPUT } from "./output.js";
@@ -19,6 +22,7 @@ const USAGE = [
   "  forebay-host status",
   "  forebay-host launch <loader-id> [--] [arguments for the application]...",
   "  forebay-host background <host-id>",
+  "  forebay-host hook <loader-id> <event>",
 ].join("\n");
 const ARGUMENT_SEPARATOR = "--";
 
@@ -48,12 +52,20 @@ function runBackground(rest: string[]): Promise<void> {
   return backgroundCommand(hostId, fileURLToPath(import.meta.url), processEnvironment());
 }
 
+function runHook(rest: string[], output: CommandLineOutput): Promise<void> {
+  const { positionals } = parseArgs({ args: rest, options: {}, allowPositionals: true });
+  const [loaderId, event] = positionals;
+  if (loaderId === undefined || event === undefined || positionals.length !== 2) throw new UsageError("hook needs exactly a loader id and an event");
+  return hookCommand({ loaderId, event }, fileURLToPath(import.meta.url), processEnvironment(), (text) => output.error(text.trimEnd()));
+}
+
 function dispatch(argv: string[], output: CommandLineOutput): Promise<number | void> {
   const [command, ...rest] = argv;
   if (command === "install") return runInstall(rest, output);
   if (command === "status") return runStatus(rest, output);
   if (command === "launch") return runLaunch(rest);
   if (command === "background") return runBackground(rest);
+  if (command === "hook") return runHook(rest, output);
   throw new UsageError(`unknown command: ${argv.join(" ") || "(none)"}`);
 }
 
@@ -64,6 +76,11 @@ function refusalOf(error: unknown): Refusal | undefined {
 /** Runs one command of the installed host, answering the process exit code: 0 done, 1 refused, 2 misused. */
 export function runHostCommandLine(argv: string[], output: CommandLineOutput = PROCESS_OUTPUT): Promise<number> {
   return runCommands(argv, output, dispatch, USAGE, refusalOf);
+}
+
+/** Starts loader `loaderId`'s host in this process for the session of the application this process is, answering how to stop it. */
+export function runSessionHost(loaderId: string): Promise<SessionHost> {
+  return sessionHostCommand(loaderId, fileURLToPath(import.meta.url), processEnvironment());
 }
 
 if (isRunDirectly(import.meta.url)) process.exitCode = await runHostCommandLine(process.argv.slice(2));

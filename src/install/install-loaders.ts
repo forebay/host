@@ -1,11 +1,12 @@
 import type { Fetcher } from "../cache/fetcher.js";
+import { writeApplicationEntry } from "../entries/apply-entry.js";
 import type { Catalog } from "../catalog/catalog.js";
 import type { HostPlaces } from "../context/places.js";
 import { readInstalledStandard } from "../loader/installed-standard.js";
 import type { LoaderApplication, LoaderStandard } from "../loader/standard.js";
 import { isRecord } from "../plugins/is-record.js";
 import { registerHost } from "../registration.js";
-import { readHostReferences, recordReferences } from "../updates/references.js";
+import { recordRunningVersion } from "../updates/references.js";
 import { openRuntime } from "../runtime/open.js";
 import type { Runtime, RuntimeSource } from "../runtime/open.js";
 import { catalogProvenance, ownHostHome } from "./forebay-host.js";
@@ -42,18 +43,20 @@ function messageOf(error: unknown): { detail: string; fix: string } {
   };
 }
 
-/** @implNote Keeps what the host scheduled for its next start, so recording the registered version never forgets an update already fetched. */
-function recordRegisteredVersion(state: string, hostId: string, version: string): void {
-  const recorded = readHostReferences(state, hostId);
-  recordReferences(state, hostId, { ...recorded, run: { ...recorded.run, [hostId]: version } });
-}
-
 function registerLoader(runtime: Runtime, options: InstallLoadersOptions, loader: CatalogLoader, version: string, pathCommands: LoaderStandard["pathCommands"]): LoaderReport {
   const { places, environment } = options;
   const identity = loaderIdentity({ id: loader.id, version, application: loader.application, pathCommands, cache: places.cache, environment });
   const registered = registerHost(runtime, places, identity, catalogProvenance(places.cache, loader.id, version, new Date()), environment);
-  recordRegisteredVersion(places.state, loader.id, version);
-  return { id: loader.id, application: loader.application.id, home: identity.home, commands: registered.commands, refusedCommands: registered.refusedCommands };
+  recordRunningVersion(places.state, loader.id, version);
+  const entry = writeApplicationEntry(runtime, places, { id: loader.id, application: loader.application, home: identity.home });
+  return {
+    id: loader.id,
+    application: loader.application.id,
+    home: identity.home,
+    commands: registered.commands,
+    refusedCommands: registered.refusedCommands,
+    entry: entry.written ? { written: true } : { written: false, detail: entry.detail },
+  };
 }
 
 /** Registers one installed loader, answering the background hosts it names once it is registered. */
@@ -76,7 +79,7 @@ function registerInstalled(runtime: Runtime, options: InstallLoadersOptions, rep
 function registerBackgroundHost(runtime: Runtime, places: HostPlaces, hostId: string, version: string): void {
   const identity = { id: hostId, version, home: ownHostHome(places, hostId), requiresCommand: false, commands: [] };
   registerHost(runtime, places, identity, catalogProvenance(places.cache, hostId, version, new Date()), {});
-  recordRegisteredVersion(places.state, hostId, version);
+  recordRunningVersion(places.state, hostId, version);
 }
 
 /** Installs and registers every background host the registered loaders name; one the catalog lacks is reported under `unavailable`. */
@@ -94,7 +97,8 @@ async function installBackgroundHosts(runtime: Runtime, options: InstallLoadersO
 
 /**
  * Installs the loader bundle of every application the report calls installed or detected and
- * registers each as a host of its own, requesting the commands its `host.json` asks for, then
+ * registers each as a host of its own, requesting the commands its `host.json` asks for and writing
+ * the entry its application starts the host through without the launcher, then
  * installs and registers every background host a registered loader names.
  *
  * @remarks An application with no loader in the catalog gets none. A loader that cannot be
