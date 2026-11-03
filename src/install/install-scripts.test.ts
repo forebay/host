@@ -28,7 +28,7 @@ const runFile = promisify(execFile);
 const WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
 
 /** @implNote Every tool the POSIX script calls, linked one by one so the child's PATH holds them and nothing else, node above all. */
-const POSIX_TOOLS = ["uname", "mkdir", "rm", "mv", "cut", "tr", "wc", "cat", "curl", "tar", "gzip", "sha256sum", "shasum"];
+const POSIX_TOOLS = ["uname", "mkdir", "rm", "mv", "cut", "tr", "wc", "cat", "curl", "tar", "gzip", "sha256sum", "shasum", "mktemp"];
 
 interface TestRuntime {
   pin: PinnedRuntime;
@@ -201,6 +201,37 @@ async function withoutSources<T>(paths: string[], body: () => Promise<T>): Promi
   }
 }
 
+interface HostileCatalog {
+  name: string;
+  change(files: Record<string, { url: string; sha256: string; size: number }>): void;
+}
+
+const HOSTILE_CATALOGS: HostileCatalog[] = [
+  { name: "a host bundle that lists no host.js", change: (files) => void delete files["host.js"] },
+  { name: "a host bundle that lists no reconcile-worker.js", change: (files) => void delete files["reconcile-worker.js"] },
+  { name: "a host bundle that lists no host.json", change: (files) => void delete files["host.json"] },
+  { name: "a file key that climbs out of the bundle", change: (files) => void (files["../escape.js"] = { ...(files["host.json"] as { url: string; sha256: string; size: number }) }) },
+  { name: "a file url outside the catalog's directory", change: (files) => void ((files["host.js"] as { url: string }).url = "../outside/host.js") },
+  { name: "a file whose bytes do not have the listed hash", change: (files) => void ((files["host.js"] as { sha256: string }).sha256 = "0".repeat(64)) },
+];
+
+/** Writes a copy of the catalog index beside it, so its relative urls still resolve, with the forebay-host files changed by `hostile`. */
+function hostileCatalog(hostile: HostileCatalog, index: number): string {
+  const parsed = JSON.parse(readFileSync(catalog.path, "utf8")) as { items: Record<string, { versions: Record<string, { files: Record<string, { url: string; sha256: string; size: number }> }> }> };
+  hostile.change((parsed.items["forebay-host"]?.versions[catalog.hostVersion] as { files: Record<string, { url: string; sha256: string; size: number }> }).files);
+  const path = join(dirname(catalog.path), `hostile-${index}.json`);
+  writeFileSync(path, JSON.stringify(parsed, null, 2));
+  return path;
+}
+
+/** A host.js left in the version directory by an earlier install, which records that it ran. */
+function plantStaleHost(): string {
+  const ran = join(base, "stale-host-ran");
+  mkdirSync(hostDirectory(), { recursive: true });
+  writeFileSync(join(hostDirectory(), "host.js"), `process.getBuiltinModule("node:fs").writeFileSync(${JSON.stringify(ran)}, "ran");\n`);
+  return ran;
+}
+
 describe("the committed install scripts", () => {
   it.each(["sh", "ps1"] as const)("carry RUNTIME_PIN in the pins of install.%s", (kind) => {
     const committed = readFileSync(SCRIPT_FILES[kind], "utf8");
@@ -276,6 +307,16 @@ describe(`install.${SCRIPT_KIND} on this machine`, () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("pass the catalog to install from");
     expect(existsSync(cache())).toBe(false);
+  }, SCRIPT_TIMEOUT);
+
+  it.each(HOSTILE_CATALOGS.map((hostile, index) => [hostile.name, hostile, index] as const))("refuses %s and runs nothing", async (_name, hostile, index) => {
+    const ran = plantStaleHost();
+    const run = await runScript([hostileCatalog(hostile, index), ...PLUGIN_ARGUMENTS], { withNode: true });
+    expect(run.status, run.stderr).toBe(1);
+    expect(run.stderr).toContain("fix: ");
+    expect(existsSync(ran)).toBe(false);
+    expect(existsSync(join(cache(), "libraries"))).toBe(false);
+    expect(existsSync(join(cache(), "bundles", "forebay-host", "escape.js"))).toBe(false);
   }, SCRIPT_TIMEOUT);
 
   it.skipIf(IS_WINDOWS)("names curl as the one thing to install when it is missing", async () => {

@@ -42,6 +42,7 @@ const argument = process.argv[1];
 const origin = /^https:\/\//.test(argument) ? argument : require("url").pathToFileURL(require("path").resolve(argument)).href;
 const KEY = /^[A-Za-z0-9_][A-Za-z0-9._-]*(\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/;
 const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$/;
+const REQUIRED = ["host.js", "reconcile-worker.js", "host.json"];
 let text = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => { text += chunk; });
@@ -53,6 +54,8 @@ process.stdin.on("end", () => {
   const version = item.latest;
   const files = VERSION.test(String(version)) && item.versions && item.versions[version] && item.versions[version].files;
   if (!files || Object.keys(files).length === 0) fail("the catalog lists no files for forebay-host " + version, "install from a catalog whose latest forebay-host lists its files");
+  const missing = REQUIRED.filter((key) => !Object.prototype.hasOwnProperty.call(files, key));
+  if (missing.length > 0) fail("the catalog lists forebay-host " + version + " without " + missing.join(", "), "install from a catalog whose forebay-host lists " + REQUIRED.join(", "));
   const base = new URL(origin);
   const directory = base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1);
   const lines = [version];
@@ -160,12 +163,16 @@ compatible_runtime() {
 }
 
 fetch_verified() {
-  curl -fsSL -o "$2.part" "$1" || refuse "could not fetch $1" 'check the network connection, then run this again'
-  if [ "$(file_size "$2.part")" != "$4" ] && [ "$4" != any ] || ! has_sha256 "$2.part" "$3"; then
-    rm -f "$2.part"
+  part=$(mktemp "$2.XXXXXX")
+  if ! curl -fsSL -o "$part" "$1"; then
+    rm -f "$part"
+    refuse "could not fetch $1" 'check the network connection, then run this again'
+  fi
+  if [ "$(file_size "$part")" != "$4" ] && [ "$4" != any ] || ! has_sha256 "$part" "$3"; then
+    rm -f "$part"
     refuse "$1 does not have the SHA-256 $3 it is pinned to" 'run this again; if it repeats, the download is being altered on the way'
   fi
-  mv -f "$2.part" "$2"
+  mv -f "$part" "$2"
 }
 
 acquire_runtime() {
@@ -191,13 +198,14 @@ acquire_runtime() {
 
 read_catalog_index() {
   case "$CATALOG" in
-    https://*) curl -fsSL "$CATALOG" ;;
-    *) cat "$CATALOG" ;;
+    https://*) INDEX=$(curl -fsSL "$CATALOG") || refuse "could not fetch the catalog $CATALOG" 'check the network connection and the url, then run this again' ;;
+    *) INDEX=$(cat < "$CATALOG") || refuse "could not read the catalog $CATALOG" 'pass the path of a readable catalog.json' ;;
   esac
 }
 
 fetch_host() {
-  listing=$(read_catalog_index | "$NODE" -e "$LIST_HOST_FILES" "$CATALOG")
+  read_catalog_index
+  listing=$(printf '%s\n' "$INDEX" | "$NODE" -e "$LIST_HOST_FILES" -- "$CATALOG")
   newline='
 '
   tab=$(printf '\t')
@@ -224,8 +232,9 @@ fetch_host() {
 $files
 EOF
   if [ "$changed" = yes ] || [ ! -f "$HOST_DIRECTORY/$INSTALL_MARKER" ]; then
-    printf '{"files":{%s}}\n' "$hashes" > "$HOST_DIRECTORY/$INSTALL_MARKER.part"
-    mv -f "$HOST_DIRECTORY/$INSTALL_MARKER.part" "$HOST_DIRECTORY/$INSTALL_MARKER"
+    marker_part=$(mktemp "$HOST_DIRECTORY/$INSTALL_MARKER.XXXXXX")
+    printf '{"files":{%s}}\n' "$hashes" > "$marker_part"
+    mv -f "$marker_part" "$HOST_DIRECTORY/$INSTALL_MARKER"
   fi
 }
 
@@ -238,4 +247,4 @@ resolve_platform
 resolve_cache
 compatible_runtime || acquire_runtime
 fetch_host
-exec "$NODE" "$HOST_DIRECTORY/host.js" install --catalog "$CATALOG" "$@"
+exec "$NODE" "$HOST_DIRECTORY/host.js" install "--catalog=$CATALOG" "$@"
