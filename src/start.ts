@@ -24,13 +24,19 @@ import type { Runtime, RuntimeSource } from "./runtime/open.js";
 import { trackReconcile } from "./reconcile-tracker.js";
 import type { ReconcileTracker } from "./reconcile-tracker.js";
 import { statusOf } from "./status.js";
-import type { HostStatus } from "./status.js";
+import type { CatalogStatus, HostStatus } from "./status.js";
+import { catalogStart } from "./updates/catalog-start.js";
+import type { CatalogStart, HostCatalog } from "./updates/catalog-start.js";
+import type { UpdateTracker } from "./updates/background.js";
 import { userHomeOf } from "./user-home.js";
 
 export interface HostOptions {
   identity: HostIdentity;
   runtime: RuntimeSource;
-  bundles: BundleSource;
+  /** A fixed set of bundles; give exactly one of this and `catalog`. */
+  bundles?: BundleSource;
+  /** Run from the cache, the catalog's sources checked in the background; give exactly one of this and `bundles`. */
+  catalog?: HostCatalog;
   provenance: Provenance;
   consumes?: string[];
   defaults?: Record<string, string>;
@@ -79,9 +85,23 @@ function wellKnownServicesOf(consumes: readonly string[], defaults: Record<strin
   return [...new Set([...consumes, ...Object.keys(defaults)])];
 }
 
-function selectionOf(runtime: Runtime, places: HostPlaces, options: HostOptions): PluginSelection {
-  const settings = hostSettings(runtime, places, options.identity).all();
-  return selectPlugins(settings, options.bundles, options.consumes ?? [], options.defaults ?? {});
+interface StartBundles {
+  bundles: BundleSource;
+  catalog: CatalogStart | null;
+}
+
+function assertOneBundleOrigin(options: HostOptions): void {
+  const given = [options.bundles, options.catalog].filter((origin) => origin !== undefined).length;
+  if (given === 1) return;
+  throw new Error(
+    `startHost takes exactly one of bundles and catalog, but was given ${given === 0 ? "neither" : "both"}; pass bundles for a fixed set, or catalog to run from the cache`,
+  );
+}
+
+function startBundles(settings: Record<string, unknown>, places: HostPlaces, options: HostOptions): StartBundles {
+  if (options.catalog === undefined) return { bundles: options.bundles as BundleSource, catalog: null };
+  const catalog = catalogStart(options.catalog, places, options.identity.id, settings, options.defaults ?? {});
+  return { bundles: catalog.bundles, catalog };
 }
 
 /** @implNote `pluginDir` is required by the engine but never read, because the `scan` built from the bundle source replaces it. */
@@ -99,15 +119,15 @@ function pluginHostOptions(runtime: Runtime, places: HostPlaces, options: HostOp
   };
 }
 
-/** Stops the plugins, then the reconcile worker, before the runtime they call into closes, once however often it is called. */
-function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, runtime: Runtime): () => Promise<void> {
+/** Stops the plugins, then the background workers, before the runtime they call into closes, once however often it is called. */
+function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, updates: UpdateTracker | null, runtime: Runtime): () => Promise<void> {
   let stopping: Promise<void> | null = null;
   const stopOnce = async () => {
     try {
       await loaded.stop();
     } finally {
       try {
-        await reconcile.stop();
+        await Promise.all([reconcile.stop(), updates?.stop()]);
       } finally {
         runtime.close();
       }
@@ -125,9 +145,16 @@ async function loadPlugins(
   bus: RuntimeEvents,
 ) {
   const registration = registerHost(runtime, places, options.identity, options.provenance, environment);
-  const selection = selectionOf(runtime, places, options);
+  const settings = hostSettings(runtime, places, options.identity).all();
+  const origin = startBundles(settings, places, options);
+  const selection = selectPlugins(settings, origin.bundles, options.consumes ?? [], options.defaults ?? {});
   const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection, bus));
-  return { registration, selection, loaded };
+  return { registration, selection, loaded, origin };
+}
+
+function catalogStatus(catalog: CatalogStart | null, updates: UpdateTracker | null): CatalogStatus | undefined {
+  if (catalog === null || updates === null) return undefined;
+  return { bundleProblems: catalog.bundles.problems(), updates: updates.progress() };
 }
 
 /** @implNote A start that throws stops the reconcile worker too, since no `stop` exists yet to reach it. */
@@ -137,17 +164,18 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
   const reconcile = trackReconcile((signal) => engine.reconcileSecrets(options.runtime, places, signal));
   const bus = eventBus();
   try {
-    const { registration, selection, loaded } = await loadPlugins(runtime, places, options, engine, environment, bus);
+    const { registration, selection, loaded, origin } = await loadPlugins(runtime, places, options, engine, environment, bus);
+    const updates = origin.catalog?.startUpdates() ?? null;
     return {
       loaded,
       places,
-      bundles: options.bundles,
+      bundles: origin.bundles,
       hosts: hostsApi(runtime, places, environment),
       events: bus,
       settings: hostSettings(runtime, places, options.identity),
       registration,
-      status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome()),
-      stop: stopper(loaded, reconcile, runtime),
+      status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome(), catalogStatus(origin.catalog, updates)),
+      stop: stopper(loaded, reconcile, updates, runtime),
     };
   } catch (error) {
     await reconcile.stop();
@@ -163,6 +191,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
  * `stop` exists yet to close it.
  */
 export async function startHostWith(options: HostOptions, engine: Partial<HostEngine>): Promise<RunningHost> {
+  assertOneBundleOrigin(options);
   const runtime = openRuntime(options.runtime);
   try {
     return await startOn(runtime, options, { ...ENGINE, ...engine });

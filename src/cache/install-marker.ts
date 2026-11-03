@@ -47,6 +47,11 @@ function checkFile(directory: string, key: string, recorded: string): InstalledC
   return actual === recorded ? undefined : damaged(`file ${key} of ${directory} has SHA-256 ${actual}, but its install recorded ${recorded}`, key);
 }
 
+/** Whether `directory` holds a readable completion marker, without re-hashing the files it names. */
+export function hasCompletionMarker(directory: string): boolean {
+  return recordedHashes(join(directory, INSTALL_MARKER)) !== undefined;
+}
+
 export async function writeInstallMarker(directory: string, hashes: RecordedHashes): Promise<void> {
   await writeIntoPlace(join(directory, INSTALL_MARKER), Buffer.from(`${JSON.stringify({ files: hashes }, null, 2)}\n`));
 }
