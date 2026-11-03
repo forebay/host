@@ -42,7 +42,7 @@ const SCHEMA_FIXES: Record<string, string> = {
 };
 
 const NEITHER_FILES_NOR_PLATFORMS_FIX = "list files, platforms, or both";
-const BYTE_ORDER_MARK = "﻿";
+const BYTE_ORDER_MARK = "\uFEFF";
 
 export type CatalogReading = { ok: true; catalog: Catalog } | { ok: false; refusal: CatalogRefusal };
 

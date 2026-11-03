@@ -109,7 +109,7 @@ describe("readCatalog", () => {
   });
 
   it("reads an index that starts with a UTF-8 byte order mark", () => {
-    expect(Object.keys(catalogOf(`﻿${index(pluginItem)}`).items)).toEqual(["thing"]);
+    expect(Object.keys(catalogOf(`\uFEFF${index(pluginItem)}`).items)).toEqual(["thing"]);
   });
 
   it("refuses two file keys that differ only by case, naming both", () => {
