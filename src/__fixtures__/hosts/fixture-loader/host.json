@@ -1,0 +1,14 @@
+{
+  "id": "fixture-loader",
+  "version": "1.0.0",
+  "entry": "host.js",
+  "application": {
+    "id": "fixture-app",
+    "label": "Fixture application",
+    "binary": "fixture-app",
+    "home": { "candidates": ["~/homes/fixture-app"] },
+    "packages": {}
+  },
+  "pathCommands": { "requested": [], "minimum": 0 },
+  "background": ["background-fixture"]
+}
