@@ -46,7 +46,8 @@ describe("catalogStart", () => {
 
   it("records the host's own references beside its plugins", () => {
     installed("a", "1.0.0");
-    catalogStart({ sources: [], references: { "forebay-host": "0.1.0", runtime: "0.1.0" } }, places, "test-host", { plugins: { a: { enabled: true } } }, {});
-    expect(references()).toEqual({ run: { "forebay-host": "0.1.0", runtime: "0.1.0", a: "1.0.0" }, next: {} });
+    const own = { run: { "forebay-host": "0.1.0", runtime: "0.1.0" }, next: { runtime: "0.0.9" } };
+    catalogStart({ sources: [], references: own }, places, "test-host", { plugins: { a: { enabled: true } } }, {});
+    expect(references()).toEqual({ run: { "forebay-host": "0.1.0", runtime: "0.1.0", a: "1.0.0" }, next: { runtime: "0.0.9" } });
   });
 });

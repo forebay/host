@@ -13,6 +13,7 @@ import type { CatalogTransport } from "./check.js";
 import { currentCatalogs } from "./current-catalogs.js";
 import { installedVersions } from "./installed.js";
 import { recordReferences } from "./references.js";
+import type { HostReferences } from "./references.js";
 import { defaultCatalogTransport } from "./transport.js";
 import { resolveVersions } from "./versions.js";
 
@@ -23,8 +24,14 @@ export interface HostCatalog {
   sources: CatalogSource[];
   transport?: CatalogTransport;
   fetcher?: Fetcher;
-  /** Versions the host runs from the cache beside its plugins (its own bundle, its libraries), recorded so no sweep removes them. */
-  references?: Record<string, string>;
+  /** Versions the host uses from the cache beside its plugins (its own bundle, its libraries), recorded so no sweep removes them. */
+  references?: HostReferences;
+  /**
+   * Whether the start checks the catalog and fetches in the background; true when absent.
+   *
+   * @internal A one-shot command such as `status` reports and stops, so it never starts a check it would abandon.
+   */
+  checkUpdates?: boolean;
 }
 
 export interface CatalogStart {
@@ -57,8 +64,9 @@ function candidatesOf(settings: Record<string, unknown>, defaults: Record<string
 export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: string, settings: Record<string, unknown>, defaults: Record<string, string>): CatalogStart {
   const enabled = candidatesOf(settings, defaults);
   const { run, fetch } = resolveVersions(currentCatalogs(catalog.sources, places.cache), enabled, installedVersions(places.cache));
-  const recorded = { ...catalog.references, ...run };
-  recordReferences(places.state, hostId, { run: recorded, next: Object.fromEntries(fetch.map(({ id, version }) => [id, version])) });
+  const recorded = { ...catalog.references?.run, ...run };
+  const kept = catalog.references?.next ?? {};
+  recordReferences(places.state, hostId, { run: recorded, next: { ...kept, ...Object.fromEntries(fetch.map(({ id, version }) => [id, version])) } });
   const bundles = cacheBundleSource(places.cache, run);
   return {
     bundles,
@@ -73,6 +81,7 @@ export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: s
         enabled,
         hostId,
         run: recorded,
+        kept,
         problems: () => bundles.problems(),
       }),
   };

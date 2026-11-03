@@ -150,8 +150,8 @@ async function loadPlugins(
 }
 
 function catalogStatus(catalog: CatalogStart | null, updates: UpdateTracker | null): CatalogStatus | undefined {
-  if (catalog === null || updates === null) return undefined;
-  return { bundleProblems: catalog.bundles.problems(), updates: updates.progress() };
+  if (catalog === null) return undefined;
+  return { bundleProblems: catalog.bundles.problems(), updates: updates?.progress() ?? null };
 }
 
 /** @implNote A start that throws stops the reconcile worker too, since no `stop` exists yet to reach it. */
@@ -162,7 +162,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
   const bus = eventBus();
   try {
     const { registration, selection, loaded, origin } = await loadPlugins(runtime, places, options, engine, environment, bus);
-    const updates = origin.catalog?.startUpdates() ?? null;
+    const updates = options.catalog?.checkUpdates === false ? null : (origin.catalog?.startUpdates() ?? null);
     return {
       loaded,
       places,

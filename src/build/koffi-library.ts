@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { KOFFI_ID } from "../install/install-foundation.js";
+import { KOFFI_ID } from "../install/host-libraries.js";
 import { BuildRefusal } from "./build-refusal.js";
 import { libraryDirectoryOutput } from "./built-directory.js";
 import type { BundleOutput } from "./bundle-plugin.js";

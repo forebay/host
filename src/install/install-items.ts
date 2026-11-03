@@ -4,10 +4,15 @@ import type { Catalog, CatalogItem } from "../catalog/catalog.js";
 import { recordAnswer } from "./install-report.js";
 import type { InstallReport } from "./install-report.js";
 
-/** One item to install, at `version` when it names one the catalog lists, else at the catalog's `latest`. */
+/** One item to install, at `version` when it names one (refused when the catalog does not list it), else at the catalog's `latest`. */
 export interface InstallTarget {
   id: string;
   version?: string;
+}
+
+/** `ids` as targets, each held to the pin `pins` gives it. */
+export function pinnedTargets(ids: readonly string[], pins: Record<string, string>): InstallTarget[] {
+  return ids.map((id) => (Object.hasOwn(pins, id) ? { id, version: pins[id] as string } : { id }));
 }
 
 function itemOf(catalog: Catalog, id: string): CatalogItem | undefined {
@@ -15,7 +20,7 @@ function itemOf(catalog: Catalog, id: string): CatalogItem | undefined {
 }
 
 function versionFor(item: CatalogItem, target: InstallTarget): string {
-  return target.version !== undefined && Object.hasOwn(item.versions, target.version) ? target.version : item.latest;
+  return target.version ?? item.latest;
 }
 
 async function installOne(catalog: Catalog, target: InstallTarget, kind: CatalogItem["kind"], cache: string, fetcher: Fetcher, report: InstallReport): Promise<string | undefined> {
