@@ -1,10 +1,13 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startPlugins } from "@weivel/typescript/host";
 import type { PluginHostOptions } from "@weivel/typescript/host";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { compileFixtureBundles } from "./__fixtures__/bundles.js";
+import { CATALOG_URL, servedCatalog, servingFetcher, servingTransport } from "./__fixtures__/catalog.js";
+import type { ServedCatalog } from "./__fixtures__/catalog.js";
+import { installVersion } from "./cache/install-version.js";
 import { REPOSITORY_ROOT } from "./__fixtures__/context.js";
 import { ACTIVITY_TOPIC } from "./context/activity.js";
 import type { ActivityRecord } from "./context/activity.js";
@@ -13,6 +16,8 @@ import { directoryBundles } from "./plugins/bundle-source.js";
 import { openRuntime, siblingRuntime } from "./runtime/open.js";
 import { startHost, startHostWith } from "./start.js";
 import { callBinding } from "./ui/bindings.js";
+import { checkCatalog } from "./updates/check.js";
+import type { CatalogTransport } from "./updates/check.js";
 import type { HostOptions, RunningHost } from "./start.js";
 
 type Layer = "portable" | "application";
@@ -230,5 +235,117 @@ describe("startHost", () => {
     const host = await started();
     await host.stop();
     await expect(host.stop()).resolves.toBeUndefined();
+  });
+});
+
+describe("a host started from a catalog", () => {
+  const SOURCE_OF_CATALOG = { kind: "https" as const, url: CATALOG_URL };
+
+  function served(versions: string[], latest: string): ServedCatalog {
+    return servedCatalog(join(base, "served"), "a", versions, latest);
+  }
+
+  function answering(catalog: ServedCatalog): ReturnType<typeof servingTransport> {
+    return servingTransport(async () => ({ status: 200, body: catalog.index, etag: "\"one\"" }));
+  }
+
+  async function preinstalled(catalog: ServedCatalog, version: string): Promise<void> {
+    const item = JSON.parse(catalog.index).items.a;
+    expect(await installVersion(environment.SPISOR_CACHE, "a", item, version, servingFetcher(catalog))).toMatchObject({ ok: true });
+  }
+
+  async function startedFrom(catalog: ServedCatalog, transport: CatalogTransport): Promise<{ host: RunningHost; fetcher: ReturnType<typeof servingFetcher> }> {
+    const fetcher = servingFetcher(catalog);
+    running = await startHost(options({ bundles: undefined, catalog: { sources: [SOURCE_OF_CATALOG], transport, fetcher } }));
+    return { host: running, fetcher };
+  }
+
+  async function finished(host: RunningHost): Promise<void> {
+    await vi.waitFor(() => expect(host.status().updates?.finished).toBe(true), { timeout: 10_000 });
+  }
+
+  it("refuses options that give both bundles and a catalog, or neither", async () => {
+    const catalog = { sources: [SOURCE_OF_CATALOG], transport: servingTransport(async () => ({ status: 304 })) };
+    await expect(startHost(options({ catalog }))).rejects.toThrow(/exactly one of bundles and catalog/);
+    await expect(startHost(options({ bundles: undefined }))).rejects.toThrow(/exactly one of bundles and catalog/);
+  });
+
+  it("makes no transport call and fetches nothing on a start inside the interval with nothing to update", async () => {
+    enable("a");
+    const catalog = served(["1.0.0"], "1.0.0");
+    await preinstalled(catalog, "1.0.0");
+    await checkCatalog(SOURCE_OF_CATALOG, environment.SPISOR_CACHE, new Date(), 24, answering(catalog));
+    const transport = answering(catalog);
+    const { host, fetcher } = await startedFrom(catalog, transport);
+    expect(host.status().active).toEqual(["a"]);
+    await finished(host);
+    expect(host.status().updates).toEqual({ checked: [{ kind: "skipped" }], fetched: [], refused: [], finished: true });
+    expect(transport.calls).toBe(0);
+    expect(fetcher.urls).toEqual([]);
+  });
+
+  it("runs the installed version, fetches a newer latest in the background and runs it on the next start", async () => {
+    enable("a");
+    const catalog = served(["1.0.0", "2.0.0"], "2.0.0");
+    await preinstalled(catalog, "1.0.0");
+    const first = await startedFrom(catalog, answering(catalog));
+    expect(first.host.status().active).toEqual(["a"]);
+    expect(first.host.bundles.locate("a")?.version).toBe("1.0.0");
+    await finished(first.host);
+    expect(first.host.status().updates?.fetched).toEqual(["a@2.0.0"]);
+    await first.host.stop();
+    const second = await startedFrom(catalog, answering(catalog));
+    expect(second.host.status().active).toEqual(["a"]);
+    expect(second.host.bundles.locate("a")?.version).toBe("2.0.0");
+    await finished(second.host);
+    expect(existsSync(join(environment.SPISOR_CACHE, "bundles", "a", "1.0.0"))).toBe(false);
+  });
+
+  it("starts unaffected when the update check fails, and reports the failure", async () => {
+    enable("a");
+    const catalog = served(["1.0.0"], "1.0.0");
+    await preinstalled(catalog, "1.0.0");
+    const transport = servingTransport(async () => {
+      throw new Error("the network is down");
+    });
+    const { host } = await startedFrom(catalog, transport);
+    expect(host.status().active).toEqual(["a"]);
+    await finished(host);
+    expect(host.status().updates?.checked).toEqual([{ kind: "failed", detail: expect.stringContaining("the network is down") }]);
+  });
+
+  it("reports a damaged installed version, refetches it in the background and runs it on the next start", async () => {
+    enable("a");
+    const catalog = served(["1.0.0"], "1.0.0");
+    await preinstalled(catalog, "1.0.0");
+    writeFileSync(join(environment.SPISOR_CACHE, "bundles", "a", "1.0.0", "index.mjs"), "export default {};");
+    const first = await startedFrom(catalog, answering(catalog));
+    expect(first.host.status().active).toEqual([]);
+    expect(first.host.status().bundleProblems).toEqual([expect.objectContaining({ id: "a", version: "1.0.0", file: "index.mjs" })]);
+    await finished(first.host);
+    expect(first.host.status().updates?.fetched).toEqual(["a@1.0.0"]);
+    await first.host.stop();
+    const second = await startedFrom(catalog, answering(catalog));
+    expect(second.host.status().active).toEqual(["a"]);
+    expect(second.host.status().bundleProblems).toEqual([]);
+  });
+
+  it("records the versions it runs as this host's references", async () => {
+    enable("a");
+    const catalog = served(["1.0.0"], "1.0.0");
+    await preinstalled(catalog, "1.0.0");
+    await startedFrom(catalog, answering(catalog));
+    expect(JSON.parse(readFileSync(join(environment.SPISOR_STATE, "bundles", "test-host.json"), "utf8"))).toEqual({ a: "1.0.0" });
+  });
+
+  it("stops while an update check is still waiting on the network", async () => {
+    enable("a");
+    const catalog = served(["1.0.0"], "1.0.0");
+    await preinstalled(catalog, "1.0.0");
+    const transport = servingTransport(() => new Promise(() => {}));
+    const { host } = await startedFrom(catalog, transport);
+    await vi.waitFor(() => expect(transport.calls).toBe(1));
+    await expect(host.stop()).resolves.toBeUndefined();
+    expect(host.status().updates?.finished).toBe(true);
   });
 });
