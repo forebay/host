@@ -67,7 +67,7 @@ function untilStopped<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 function stoppable(plan: UpdatePlan, signal: AbortSignal): { transport: CatalogTransport; fetcher: Fetcher } {
   return {
     transport: { get: (url, etag) => untilStopped(plan.transport.get(url, etag), signal) },
-    fetcher: { fetch: (url) => untilStopped(plan.fetcher.fetch(url), signal) },
+    fetcher: { fetch: (url, expectedSize) => untilStopped(plan.fetcher.fetch(url, expectedSize), signal) },
   };
 }
 

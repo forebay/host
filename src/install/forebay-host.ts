@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { HostPlaces } from "../context/places.js";
 import type { HostIdentity } from "../identity.js";
+import type { Provenance } from "../registration.js";
 
 /** The id the standalone host runs and records its references under. */
 export const FOREBAY_HOST_ID = "forebay-host";
@@ -18,4 +19,16 @@ export function forebayHostHome(places: HostPlaces): string {
 /** @implNote No commands: the standalone host writes nothing onto the PATH. */
 export function forebayHostIdentity(places: HostPlaces, version: string): HostIdentity {
   return { id: FOREBAY_HOST_ID, version, home: forebayHostHome(places), requiresCommand: false, commands: [] };
+}
+
+/** How the standalone host at `version` in `cache` was installed: from a catalog, at `installedAt`. */
+export function forebayHostProvenance(cache: string, version: string, installedAt: Date): Provenance {
+  return {
+    method: "catalog",
+    version,
+    location: join(cache, "bundles", FOREBAY_HOST_ID, version),
+    os: process.platform,
+    architecture: process.arch,
+    installedAt: installedAt.toISOString(),
+  };
 }

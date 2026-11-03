@@ -1,3 +1,4 @@
+import { foldedDuplicate } from "./folded-keys.js";
 import { validateCatalogIndex } from "./schema.generated.js";
 import { resolveWithinOrigin } from "./urls.js";
 
@@ -41,6 +42,7 @@ const SCHEMA_FIXES: Record<string, string> = {
 };
 
 const NEITHER_FILES_NOR_PLATFORMS_FIX = "list files, platforms, or both";
+const BYTE_ORDER_MARK = "﻿";
 
 export type CatalogReading = { ok: true; catalog: Catalog } | { ok: false; refusal: CatalogRefusal };
 
@@ -110,9 +112,32 @@ function unknownLatest(catalog: Catalog): CatalogRefusal | undefined {
   return undefined;
 }
 
+/** The key sets one install of `version` writes into one directory: the shared files alone, or with each platform's. */
+function installedKeySets(version: CatalogVersion): string[][] {
+  const shared = Object.keys(version.files ?? {});
+  const platforms = Object.values(version.platforms ?? {});
+  return platforms.length === 0 ? [shared] : platforms.map((platform) => [...shared, ...Object.keys(platform.files)]);
+}
+
+function caseCollision(catalog: Catalog): CatalogRefusal | undefined {
+  for (const [id, item] of Object.entries(catalog.items)) {
+    for (const [name, version] of Object.entries(item.versions)) {
+      const pair = installedKeySets(version).map(foldedDuplicate).find((found) => found !== undefined);
+      if (pair === undefined) continue;
+      return {
+        detail: `files ${pair[0]} and ${pair[1]} of ${id}@${name} differ only by case, so Windows and macOS would install both into one file`,
+        fix: "give every file of a version a name that differs from the others in more than case",
+        path: `/items/${id}/versions/${name}`,
+      };
+    }
+  }
+  return undefined;
+}
+
+/** @implNote A leading byte order mark is dropped, as an editor on Windows writes one and JSON.parse refuses it. */
 function parseJson(text: string): { value: unknown } | CatalogRefusal {
   try {
-    return { value: JSON.parse(text) };
+    return { value: JSON.parse(text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text) };
   } catch (error) {
     return { detail: `the catalog index is not valid JSON: ${(error as Error).message}`, fix: "serve the index as a JSON document" };
   }
@@ -127,6 +152,6 @@ export function readCatalog(text: string, origin: string): CatalogReading {
   if (!("value" in parsed)) return refuse(parsed);
   if (!validateCatalogIndex(parsed.value)) return refuse(refusalFor(mostSpecificError(validateCatalogIndex.errors as SchemaError[])));
   const catalog = parsed.value as Catalog;
-  const refusal = unknownLatest(catalog) ?? resolveCatalogUrls(catalog, origin);
+  const refusal = unknownLatest(catalog) ?? caseCollision(catalog) ?? resolveCatalogUrls(catalog, origin);
   return refusal === undefined ? { ok: true, catalog } : refuse(refusal);
 }

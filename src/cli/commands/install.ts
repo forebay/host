@@ -7,7 +7,6 @@ import type { Bootstrap } from "../../install/bootstrap-libraries.js";
 import { forebayHostHome } from "../../install/forebay-host.js";
 import { KOFFI_ID, RUNTIME_ID, verifiedRuntimeSource } from "../../install/host-libraries.js";
 import { installEcosystem } from "../../install/install-ecosystem.js";
-import { mergeReports } from "../../install/install-report.js";
 import type { HostLibraries } from "../../runtime/cached-runtime.js";
 import { CommandRefusal } from "../command-refusal.js";
 import { UsageError } from "../command-line.js";
@@ -50,8 +49,7 @@ export async function installCommand(given: InstallArguments, bundleFile: string
   const bootstrap = await bootstrapLibraries(sources, location.cache, fetcher);
   const source = verifiedRuntimeSource(location.cache, librariesOf(bootstrap), currentPlatformKey());
   const { places } = readHostSetup(source, environment, location);
-  const installed = await installEcosystem({ catalog: sources, places, home: forebayHostHome(places), defaults: [], requested: given.plugins, fetcher });
-  const report = mergeReports(bootstrap.report, installed);
+  const report = await installEcosystem({ catalog: sources, places, home: forebayHostHome(places), defaults: [], requested: given.plugins, fetcher, bootstrap });
   output.out(JSON.stringify(report, null, 2));
   if (report.unavailable.length === 0) return;
   throw new CommandRefusal(`${report.unavailable.map(({ id }) => id).join(", ")} could not be installed`, "see each item's fix under unavailable above, then install again");

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -17,11 +17,23 @@ function installed(id: string, version: string, marked = true): string {
   return directory;
 }
 
-function installedLibrary(id: string, version: string, platform: string, marked = true): void {
+function installedLibrary(id: string, version: string, platform: string, marked = true): string {
   const directory = join(cache, "libraries", id, version, platform);
   mkdirSync(directory, { recursive: true });
   writeFileSync(join(directory, "library.json"), "{}");
   if (marked) writeFileSync(join(directory, ".installed.json"), JSON.stringify({ files: {} }));
+  return directory;
+}
+
+/** Dates `path` and everything under it `hours` into the past. */
+function ageBy(path: string, hours: number): string {
+  const then = new Date(Date.now() - hours * 3_600_000);
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    if (entry.isDirectory()) ageBy(join(path, entry.name), hours);
+    else utimesSync(join(path, entry.name), then, then);
+  }
+  utimesSync(path, then, then);
+  return path;
 }
 
 function libraryPresent(id: string, version: string, platform: string): boolean {
@@ -106,5 +118,33 @@ describe("sweepCache", () => {
     installedLibrary("koffi", "2.0.0", "linux-x64");
     expect(sweepCache(cache, state).removed).toEqual([]);
   });
-});
 
+  it("removes a bundle version with no completion marker whose newest file is more than a day old, an install that failed", () => {
+    installed("a", "1.0.0");
+    ageBy(installed("a", "2.0.0", false), 25);
+    expect(sweepCache(cache, state).removed).toEqual(["a@2.0.0"]);
+    expect(present("a", "2.0.0")).toBe(false);
+    expect(present("a", "1.0.0")).toBe(true);
+  });
+
+  it("keeps an unmarked bundle version while any one of its files is recent, an install still writing", () => {
+    const directory = ageBy(installed("a", "2.0.0", false), 25);
+    writeFileSync(join(directory, "index.js"), "still arriving");
+    expect(sweepCache(cache, state).removed).toEqual([]);
+  });
+
+  it("keeps an old unmarked bundle version a host references", () => {
+    ageBy(installed("a", "2.0.0", false), 25);
+    recordReferences(state, "claude-code", { run: {}, next: { a: "2.0.0" } });
+    expect(sweepCache(cache, state).removed).toEqual([]);
+  });
+
+  it("removes a library version for one platform with no completion marker that is more than a day old", () => {
+    installedLibrary("koffi", "2.0.0", "linux-x64");
+    ageBy(installedLibrary("koffi", "1.0.0", "linux-x64", false), 25);
+    installedLibrary("koffi", "1.0.0", "win32-x64");
+    expect(sweepCache(cache, state).removed).toEqual(["koffi@1.0.0 for linux-x64"]);
+    expect(libraryPresent("koffi", "1.0.0", "linux-x64")).toBe(false);
+    expect(libraryPresent("koffi", "1.0.0", "win32-x64")).toBe(true);
+  });
+});

@@ -69,6 +69,17 @@ export interface HostEngine {
   reconcileSecrets(source: RuntimeSource, places: HostPlaces, signal: AbortSignal): Promise<ReconcileAnswer>;
 }
 
+/**
+ * How one start runs, beyond what an application chooses through {@link HostOptions}.
+ *
+ * @internal Not part of the package entry: a one-shot command such as `status` reports and stops,
+ * so it never starts a background check it would abandon.
+ */
+export interface StartChoices {
+  /** Whether a start from a catalog checks it and fetches in the background; true when absent. */
+  checkUpdates?: boolean;
+}
+
 const ENGINE: HostEngine = {
   startPlugins,
   reconcileSecrets: reconcileSecretsInBackground,
@@ -155,14 +166,14 @@ function catalogStatus(catalog: CatalogStart | null, updates: UpdateTracker | nu
 }
 
 /** @implNote A start that throws stops the reconcile worker too, since no `stop` exists yet to reach it. */
-async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngine): Promise<RunningHost> {
+async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngine, choices: StartChoices): Promise<RunningHost> {
   const environment = options.environment ?? processEnvironment();
   const places = runtime.places.resolve({ home: userHomeOf(environment), environment });
   const reconcile = trackReconcile((signal) => engine.reconcileSecrets(options.runtime, places, signal));
   const bus = eventBus();
   try {
     const { registration, selection, loaded, origin } = await loadPlugins(runtime, places, options, engine, environment, bus);
-    const updates = options.catalog?.checkUpdates === false ? null : (origin.catalog?.startUpdates() ?? null);
+    const updates = choices.checkUpdates === false ? null : (origin.catalog?.startUpdates() ?? null);
     return {
       loaded,
       places,
@@ -181,17 +192,18 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
 }
 
 /**
- * Starts a host with parts of its engine replaced.
+ * Starts a host with parts of its engine replaced, or with {@link StartChoices} of its own.
  *
- * @internal A test seam, kept out of the package entry; an application calls {@link startHost}.
+ * @internal A test seam and the one-shot commands' start, kept out of the package entry; an
+ * application calls {@link startHost}.
  * @implNote The runtime is closed again when anything before the plugins start throws, since no
  * `stop` exists yet to close it.
  */
-export async function startHostWith(options: HostOptions, engine: Partial<HostEngine>): Promise<RunningHost> {
+export async function startHostWith(options: HostOptions, engine: Partial<HostEngine>, choices: StartChoices = {}): Promise<RunningHost> {
   assertOneBundleOrigin(options);
   const runtime = openRuntime(options.runtime);
   try {
-    return await startOn(runtime, options, { ...ENGINE, ...engine });
+    return await startOn(runtime, options, { ...ENGINE, ...engine }, choices);
   } catch (error) {
     runtime.close();
     throw error;

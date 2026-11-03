@@ -2,6 +2,7 @@ import { rmdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { installedLibraries, libraryPlatforms } from "../cache/installed-libraries.js";
 import { isStrictlyInside } from "../cache/strictly-inside.js";
+import { abandonedBundles, abandonedLibraries } from "./abandoned.js";
 import { installedVersions } from "./installed.js";
 import { readReferences } from "./references.js";
 import { newestVersion } from "./semver.js";
@@ -49,13 +50,21 @@ function removeLibraryVersion(root: string, id: string, version: string, platfor
   return true;
 }
 
-function sweepLibraries(cache: string, referenced: Set<string>): string[] {
+function sweepLibraries(cache: string, referenced: Set<string>, now: number): string[] {
   const root = resolve(cache, "libraries");
-  return libraryPlatforms(cache).flatMap((platform) =>
-    unkept(installedLibraries(cache, platform), referenced)
-      .filter(({ id, version }) => removeLibraryVersion(root, id, version, platform))
-      .map(({ id, version }) => `${id}@${version} for ${platform}`),
-  );
+  const unkeptInstalled = libraryPlatforms(cache).flatMap((platform) => unkept(installedLibraries(cache, platform), referenced).map((entry) => ({ ...entry, platform })));
+  const abandoned = abandonedLibraries(cache, now).filter(({ id, version }) => !referenced.has(`${id}@${version}`));
+  return [...unkeptInstalled, ...abandoned]
+    .filter(({ id, version, platform }) => removeLibraryVersion(root, id, version, platform))
+    .map(({ id, version, platform }) => `${id}@${version} for ${platform}`);
+}
+
+function sweepBundles(cache: string, referenced: Set<string>, now: number): string[] {
+  const root = resolve(cache, "bundles");
+  const abandoned = abandonedBundles(cache, now).filter(({ id, version }) => !referenced.has(`${id}@${version}`));
+  return [...unkept(installedVersions(cache), referenced), ...abandoned]
+    .filter(({ id, version }) => removeVersion(root, id, version))
+    .map(({ id, version }) => `${id}@${version}`);
 }
 
 /**
@@ -63,15 +72,13 @@ function sweepLibraries(cache: string, referenced: Set<string>): string[] {
  * reference file names, as run or as scheduled for its next start, keeping each id's newest installed
  * version as the rollback.
  *
- * @remarks A version with no completion marker is left alone, since another host sharing the cache
- * may be installing it right now. A version that cannot be removed (a file another process holds
+ * @remarks A version with no completion marker is left alone while anything in it changed within
+ * the last day, since another host sharing the cache may be installing it right now; older, it is
+ * a failed install and is removed unless a reference names it. A version that cannot be removed (a file another process holds
  * open on Windows) is skipped and tried again by the next sweep.
  */
 export function sweepCache(cache: string, state: string): { removed: string[] } {
-  const root = resolve(cache, "bundles");
   const referenced = referencedVersions(state);
-  const bundles = unkept(installedVersions(cache), referenced)
-    .filter(({ id, version }) => removeVersion(root, id, version))
-    .map(({ id, version }) => `${id}@${version}`);
-  return { removed: [...bundles, ...sweepLibraries(cache, referenced)] };
+  const now = Date.now();
+  return { removed: [...sweepBundles(cache, referenced, now), ...sweepLibraries(cache, referenced, now)] };
 }

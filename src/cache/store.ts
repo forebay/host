@@ -68,7 +68,7 @@ export async function writeIntoPlace(path: string, bytes: Uint8Array, renameInto
 export async function storeFileWith(reference: FileRef, path: string, fetcher: Fetcher, seams: StoreSeams): Promise<"cached" | "fetched"> {
   const cached = await readIfPresent(path);
   if (cached && matches(cached, reference)) return "cached";
-  const bytes = verified(await fetcher.fetch(reference.url), reference);
+  const bytes = verified(await fetcher.fetch(reference.url, reference.size), reference);
   await mkdir(dirname(path), { recursive: true });
   await writeIntoPlace(path, bytes, seams.rename);
   return "fetched";
