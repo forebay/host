@@ -1,22 +1,12 @@
 import { extname } from "node:path";
+import { argument, command } from "cross-spawn/lib/util/escape.js";
 
-const SHELL_CHARACTERS = /([()\][%!^"`<>&|;, *?])/g;
 const DIRECT_EXTENSIONS = new Set([".exe", ".com"]);
 
 /** How to start a program: the executable and its arguments, already quoted when the shell parses them. */
 export interface Invocation {
   command: string;
   arguments: string[];
-}
-
-function escapeShellCharacters(text: string): string {
-  return text.replace(SHELL_CHARACTERS, "^$1");
-}
-
-/** @implNote Quoted the way the C runtime splits a command line, then every shell character escaped, so `cmd.exe` hands the batch file each argument as given. */
-function escapeArgument(argument: string): string {
-  const quoted = `"${argument.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")}"`;
-  return escapeShellCharacters(quoted);
 }
 
 /** Whether `binary` is a batch file or script that only the command shell can start on Windows. */
@@ -28,10 +18,12 @@ export function needsCommandShell(binary: string): boolean {
  * Starts `binary` through `cmd.exe /d /s /c`, which a `.cmd` or `.bat` file (an npm shim among them)
  * needs, since Windows cannot start one directly.
  *
- * @implNote The arguments must be passed verbatim, because the quoting here is for the command
- * shell and Node's own quoting would wrap it a second time.
+ * @implNote Every argument is escaped twice by cross-spawn's rules, because the shell parses the
+ * line once and a batch file passing `%*` on parses it again; escaped once, an argument holding a
+ * quote and `&` runs a command of its own (CVE-2024-27980). The arguments must be passed verbatim,
+ * since Node's own quoting would wrap this a second time.
  */
 export function commandShellInvocation(binary: string, givenArguments: readonly string[], commandShell: string): Invocation {
-  const line = [escapeShellCharacters(binary), ...givenArguments.map(escapeArgument)].join(" ");
+  const line = [command(binary), ...givenArguments.map((given) => argument(given, true))].join(" ");
   return { command: commandShell, arguments: ["/d", "/s", "/c", `"${line}"`] };
 }

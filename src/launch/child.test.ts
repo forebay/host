@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -39,7 +39,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const tag of ["passes"]) {
+  for (const tag of ["passes", "vectors"]) {
     const started = fakeApplicationStart(signals, tag);
     if (started !== undefined) killIfAlive(started.pid);
   }
@@ -61,16 +61,27 @@ describe("runApplication", () => {
     expect(started.argv).toEqual(given);
   });
 
+  it("hands a batch shim each argument byte-identical and runs nothing an argument names", async () => {
+    const marker = join(signals, "injected");
+    const given = ["vectors", "0", `x" & echo INJECTED> ${marker} & "y`, '"x" & y', `"%PATH%" ^ ! & echo INJECTED> ${marker}`];
+    const running = runApplication(binary, given, environment);
+    const started = await startedWithin("vectors", 20000);
+    releaseFakeApplication(signals, "vectors");
+    expect(await running).toBe(0);
+    expect(started.argv).toEqual(given);
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("refuses an application that cannot be started, with what to do", async () => {
     await expect(runApplication(join(base, "absent", process.platform === "win32" ? "missing-app.exe" : "missing-app"), [], environment)).rejects.toMatchObject({ fix: expect.stringContaining("install") });
   });
 });
 
 describe("commandShellInvocation", () => {
-  it("runs a batch file through the command shell with every argument quoted and its shell characters escaped", () => {
+  it("runs a batch file through the command shell with every argument quoted and its shell characters escaped for both parses", () => {
     expect(commandShellInvocation("C:\\bin\\app.cmd", ["a b", "x&y"], "C:\\Windows\\cmd.exe")).toEqual({
       command: "C:\\Windows\\cmd.exe",
-      arguments: ["/d", "/s", "/c", '"C:\\bin\\app.cmd ^"a^ b^" ^"x^&y^""'],
+      arguments: ["/d", "/s", "/c", '"C:\\bin\\app.cmd ^^^"a^^^ b^^^" ^^^"x^^^&y^^^""'],
     });
   });
 });

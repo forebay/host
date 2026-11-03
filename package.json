@@ -14,8 +14,19 @@
     "type": "git",
     "url": "git+https://github.com/forebay/host.git"
   },
-  "keywords": ["forebay", "ai-proxy", "ai", "llm", "core-library", "typescript"],
-  "files": ["dist/", "README.md", "LICENSE"],
+  "keywords": [
+    "forebay",
+    "ai-proxy",
+    "ai",
+    "llm",
+    "core-library",
+    "typescript"
+  ],
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "node scripts/embed-catalog-schema.mjs && tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
@@ -24,6 +35,7 @@
   },
   "dependencies": {
     "@weivel/typescript": "file:./siblings/typescript",
+    "cross-spawn": "7.0.6",
     "esbuild": "0.28.2"
   },
   "devDependencies": {
