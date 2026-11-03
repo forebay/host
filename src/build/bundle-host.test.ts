@@ -36,11 +36,12 @@ describe("bundleHost", () => {
       files: {
         "host.js": join(out, "host.js"),
         "reconcile-worker.js": join(out, "reconcile-worker.js"),
+        "boot.js": join(out, "boot.js"),
         "package.json": join(out, "package.json"),
         "host.json": join(out, "host.json"),
       },
     });
-    expect(readdirSync(out).sort()).toEqual(["host.js", "host.json", "package.json", "reconcile-worker.js"]);
+    expect(readdirSync(out).sort()).toEqual(["boot.js", "host.js", "host.json", "package.json", "reconcile-worker.js"]);
     expect(JSON.parse(readFileSync(join(out, "host.json"), "utf8"))).toEqual({ id: "forebay-host", version: PACKAGE_VERSION, entry: "host.js" });
     expect(JSON.parse(readFileSync(join(out, "package.json"), "utf8"))).toEqual({ type: "module" });
   });

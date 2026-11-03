@@ -7,6 +7,7 @@ import { checkLoaderStandard } from "../loader/standard.js";
 import type { LoaderApplication, LoaderStandard } from "../loader/standard.js";
 import { isRecord } from "../plugins/is-record.js";
 import { registerHost } from "../registration.js";
+import { readHostReferences, recordReferences } from "../updates/references.js";
 import { openRuntime } from "../runtime/open.js";
 import type { Runtime, RuntimeSource } from "../runtime/open.js";
 import { catalogProvenance } from "./forebay-host.js";
@@ -22,8 +23,6 @@ export interface InstallLoadersOptions {
   runtimeSource: RuntimeSource;
   fetcher: Fetcher;
   environment: Record<string, string>;
-  /** The host bundle running this install, which every loader's commands start. */
-  hostBundleFile: string;
 }
 
 interface CatalogLoader {
@@ -57,10 +56,17 @@ function messageOf(error: unknown): { detail: string; fix: string } {
   };
 }
 
+/** @implNote Keeps what the loader scheduled for its next start, so recording the registered version never forgets an update already fetched. */
+function recordRegisteredVersion(state: string, loaderId: string, version: string): void {
+  const recorded = readHostReferences(state, loaderId);
+  recordReferences(state, loaderId, { run: { ...recorded.run, [loaderId]: version }, next: recorded.next });
+}
+
 function registerLoader(runtime: Runtime, options: InstallLoadersOptions, loader: CatalogLoader, version: string, pathCommands: LoaderStandard["pathCommands"]): LoaderReport {
-  const { places, environment, hostBundleFile } = options;
-  const identity = loaderIdentity({ id: loader.id, version, application: loader.application, pathCommands, hostBundleFile, environment });
+  const { places, environment } = options;
+  const identity = loaderIdentity({ id: loader.id, version, application: loader.application, pathCommands, cache: places.cache, environment });
   const registered = registerHost(runtime, places, identity, catalogProvenance(places.cache, loader.id, version, new Date()), environment);
+  recordRegisteredVersion(places.state, loader.id, version);
   return { id: loader.id, application: loader.application.id, home: identity.home, commands: registered.commands, refusedCommands: registered.refusedCommands };
 }
 

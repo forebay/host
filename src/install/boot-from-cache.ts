@@ -44,19 +44,18 @@ function changedFrom(loaded: HostLibraries, resolved: Record<string, string>): R
 }
 
 /**
- * Resolves the runtime and koffi the next start loads, records them for it, and answers the
+ * Resolves the runtime and koffi the next start loads, records them for it with the host bundle
+ * version it runs (the one scheduled, else the one running), and answers the
  * references that keep both those and what runs now from any sweep, beside what the host already
  * scheduled for its next start.
  */
 export function hostLibraryReferences(resolution: LibraryResolution): HostReferences {
   const { cache, state, hostId, loaded } = resolution;
   const resolved = resolveHostLibraries(resolution.catalog, resolution.settings, cache, resolution.platformKey ?? currentPlatformKey());
+  const scheduled = { ...readHostReferences(state, hostId).next, ...changedFrom(loaded, resolved) };
   const next = hostLibrariesOf(resolved);
-  if (next !== undefined) recordBootLibraries(cache, hostId, next);
-  return {
-    run: { ...resolution.running, [RUNTIME_ID]: loaded.runtime, [KOFFI_ID]: loaded.koffi },
-    next: { ...readHostReferences(state, hostId).next, ...changedFrom(loaded, resolved) },
-  };
+  if (next !== undefined) recordBootLibraries(cache, hostId, next, scheduled[hostId] ?? resolution.running[hostId]);
+  return { run: { ...resolution.running, [RUNTIME_ID]: loaded.runtime, [KOFFI_ID]: loaded.koffi }, next: scheduled };
 }
 
 export type { HostLibraries, HostReferences };

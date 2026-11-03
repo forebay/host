@@ -1,5 +1,6 @@
 import { rmdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
+import { hintedVersions } from "../boot/boot-hint.js";
 import { installedLibraries, libraryPlatforms } from "../cache/installed-libraries.js";
 import { isStrictlyInside } from "../cache/strictly-inside.js";
 import { abandonedBundles, abandonedLibraries } from "./abandoned.js";
@@ -7,8 +8,8 @@ import { installedVersions } from "./installed.js";
 import { readReferences } from "./references.js";
 import { newestVersion } from "./semver.js";
 
-function referencedVersions(state: string): Set<string> {
-  const referenced = new Set<string>();
+function referencedVersions(cache: string, state: string): Set<string> {
+  const referenced = new Set<string>(hintedVersions(cache));
   for (const { run, next } of readReferences(state)) {
     for (const [id, version] of [...Object.entries(run), ...Object.entries(next)]) referenced.add(`${id}@${version}`);
   }
@@ -69,7 +70,8 @@ function sweepBundles(cache: string, referenced: Set<string>, now: number): stri
 
 /**
  * Deletes every installed bundle version, and every library version per platform, that no host's
- * reference file names, as run or as scheduled for its next start, keeping each id's newest installed
+ * reference file names, as run or as scheduled for its next start, nor any boot hint names for the
+ * start after (a command shim runs through the hint, so what it names must outlive any sweep), keeping each id's newest installed
  * version as the rollback.
  *
  * @remarks A version with no completion marker is left alone while anything in it changed within
@@ -78,7 +80,7 @@ function sweepBundles(cache: string, referenced: Set<string>, now: number): stri
  * open on Windows) is skipped and tried again by the next sweep.
  */
 export function sweepCache(cache: string, state: string): { removed: string[] } {
-  const referenced = referencedVersions(state);
+  const referenced = referencedVersions(cache, state);
   const now = Date.now();
   return { removed: [...sweepBundles(cache, referenced, now), ...sweepLibraries(cache, referenced, now)] };
 }

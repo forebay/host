@@ -14,6 +14,7 @@ import { openRuntime, siblingRuntime } from "../runtime/open.js";
 import type { Runtime } from "../runtime/open.js";
 import { installCatalog } from "./install-catalog.js";
 import { installLoaders } from "./install-loaders.js";
+import { readHostReferences, recordReferences } from "../updates/references.js";
 import { emptyReport } from "./install-report.js";
 import type { InstallReport } from "./install-report.js";
 
@@ -29,7 +30,6 @@ let base: string;
 let environment: Record<string, string>;
 let runtime: Runtime;
 let places: HostPlaces;
-const HOST_BUNDLE_FILE = "host.js";
 
 function writeLoader(spec: LoaderSpec): string {
   const directory = join(base, "loaders", spec.id);
@@ -64,7 +64,7 @@ function reportOf(applications: Array<{ id: string; state: "installed" | "detect
 }
 
 async function install(catalog: Catalog, report: InstallReport): Promise<void> {
-  await installLoaders({ catalog, places, runtimeSource: siblingRuntime(REPOSITORY_ROOT), fetcher: defaultFetcher(), environment, hostBundleFile: HOST_BUNDLE_FILE }, report);
+  await installLoaders({ catalog, places, runtimeSource: siblingRuntime(REPOSITORY_ROOT), fetcher: defaultFetcher(), environment }, report);
 }
 
 function registration(id: string): Record<string, unknown> | undefined {
@@ -104,6 +104,15 @@ describe("installLoaders without commands", () => {
     expect(registration("alpha-loader")).toMatchObject({ kind: "host", version: "1.0.0", home: join(base, "user", "homes", "alpha"), application: { id: "alpha" }, provenance: { method: "catalog", version: "1.0.0" } });
     expect(registration("beta-loader")).toMatchObject({ application: { id: "beta" } });
     expect(report.unavailable).toEqual([]);
+  });
+
+  it("records the registered version of each loader as a reference, keeping what it already scheduled", async () => {
+    const catalog = await catalogOf(TWO);
+    recordReferences(places.state, "alpha-loader", { run: { "alpha-loader": "0.9.0" }, next: { "alpha-loader": "2.0.0" } });
+    await install(catalog, reportOf([{ id: "alpha", state: "installed" }, { id: "beta", state: "detected" }]));
+
+    expect(readHostReferences(places.state, "alpha-loader")).toEqual({ run: { "alpha-loader": "1.0.0" }, next: { "alpha-loader": "2.0.0" } });
+    expect(readHostReferences(places.state, "beta-loader")).toEqual({ run: { "beta-loader": "1.0.0" }, next: {} });
   });
 
   it("registers nothing for an application that is neither installed nor detected", async () => {
@@ -148,6 +157,7 @@ describe.runIf(process.env.CI === "true")("installLoaders with commands", () => 
     if (process.platform !== "win32") {
       const shim = readFileSync(join(places.state, "bin", "gamma-cmd"), "utf8");
       expect(shim).toContain(process.execPath);
+      expect(shim).toContain(join(places.cache, "boot", "boot.js"));
       expect(shim).toContain("launch");
       expect(shim).toContain("gamma-loader");
     }

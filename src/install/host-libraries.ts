@@ -1,14 +1,10 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { readBootHint, writeBootHint } from "../boot/boot-hint.js";
 import { CacheRefusal } from "../cache/cache-refusal.js";
 import { checkInstalled } from "../cache/install-marker.js";
 import { installedLibraries } from "../cache/installed-libraries.js";
-import { isStrictlyInside } from "../cache/strictly-inside.js";
 import type { Catalog } from "../catalog/catalog.js";
 import { pinnedVersions } from "../plugins/enabled.js";
 import type { EnabledPlugin } from "../plugins/enabled.js";
-import { isRecord } from "../plugins/is-record.js";
 import { cachedRuntime, libraryDirectory } from "../runtime/cached-runtime.js";
 import type { HostLibraries } from "../runtime/cached-runtime.js";
 import type { RuntimeSource } from "../runtime/open.js";
@@ -19,21 +15,8 @@ export const RUNTIME_ID = "runtime";
 export const KOFFI_ID = "koffi";
 const LIBRARY_IDS = [RUNTIME_ID, KOFFI_ID] as const;
 
-function recordFile(cache: string, hostId: string): string {
-  const folder = resolve(cache, "hosts");
-  const file = resolve(folder, `${hostId}.json`);
-  if (hostId === "" || !isStrictlyInside(folder, file)) throw new Error(`the host id ${JSON.stringify(hostId)} would record its libraries outside ${folder}`);
-  return file;
-}
-
 function readRecord(cache: string, hostId: string): Record<string, string> {
-  try {
-    const value: unknown = JSON.parse(readFileSync(recordFile(cache, hostId), "utf8"));
-    const libraries = isRecord(value) && isRecord(value.libraries) ? value.libraries : {};
-    return Object.fromEntries(Object.entries(libraries).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-  } catch {
-    return {};
-  }
+  return readBootHint(cache, hostId)?.libraries ?? {};
 }
 
 function libraryCandidates(settings: Record<string, unknown>): EnabledPlugin[] {
@@ -60,18 +43,11 @@ export function resolveHostLibraries(catalog: Catalog, settings: Record<string, 
 
 /**
  * Records a resolution for the next start of `hostId` to load, in the cache, since a host must load
- * koffi and the runtime before it can read its places.
+ * koffi and the runtime before it can read its places, together with the host bundle version that
+ * start runs when it is known.
  */
-export function recordBootLibraries(cache: string, hostId: string, libraries: HostLibraries): void {
-  const file = recordFile(cache, hostId);
-  mkdirSync(resolve(cache, "hosts"), { recursive: true });
-  const temporary = `${file}.${randomUUID()}.tmp`;
-  try {
-    writeFileSync(temporary, `${JSON.stringify({ libraries }, null, 2)}\n`);
-    renameSync(temporary, file);
-  } finally {
-    rmSync(temporary, { force: true });
-  }
+export function recordBootLibraries(cache: string, hostId: string, libraries: HostLibraries, hostVersion?: string): void {
+  writeBootHint(cache, hostId, libraries, hostVersion);
 }
 
 /**
