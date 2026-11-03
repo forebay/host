@@ -11,7 +11,8 @@ import { CacheRefusal } from "./cache-refusal.js";
 const DOWNLOAD_DEADLINE_MS = 75_000;
 
 export interface Fetcher {
-  fetch(url: string): Promise<Uint8Array>;
+  /** The bytes `url` names; with `expectedSize`, an https answer is abandoned the moment it serves more. */
+  fetch(url: string, expectedSize?: number): Promise<Uint8Array>;
 }
 
 /** @internal Test seams into fetching, reached through {@link fetcherWith}; not part of the package entry. */
@@ -50,16 +51,45 @@ async function untilDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<
   }
 }
 
-async function responseBytes(url: string, fetchImplementation: typeof fetch, signal: AbortSignal): Promise<Uint8Array> {
-  const response = await fetchImplementation(url, { signal });
-  if (!response.ok) throw new CacheRefusal(`${url} answered HTTP ${response.status}`, "check that the catalog still publishes this file");
-  return new Uint8Array(await response.arrayBuffer());
+function oversized(url: string, expectedSize: number): CacheRefusal {
+  return new CacheRefusal(`${url} served more than the ${expectedSize} bytes the catalog lists`, "never use it: ask the catalog's publisher to correct the file or its entry");
 }
 
-async function fetchHttps(url: string, fetchImplementation: typeof fetch, deadlineMs: number): Promise<Uint8Array> {
+function declaredLength(response: Response): number | undefined {
+  const header = response.headers.get("content-length");
+  return header === null || !/^[0-9]+$/.test(header) ? undefined : Number(header);
+}
+
+async function boundedBytes(url: string, body: ReadableStream<Uint8Array>, expectedSize: number): Promise<Uint8Array> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (let read = await reader.read(); !read.done; read = await reader.read()) {
+    total += read.value.length;
+    if (total > expectedSize) {
+      await reader.cancel();
+      throw oversized(url, expectedSize);
+    }
+    chunks.push(read.value);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
+async function responseBytes(url: string, fetchImplementation: typeof fetch, signal: AbortSignal, expectedSize: number | undefined): Promise<Uint8Array> {
+  const response = await fetchImplementation(url, { signal });
+  if (!response.ok) throw new CacheRefusal(`${url} answered HTTP ${response.status}`, "check that the catalog still publishes this file");
+  if (expectedSize === undefined || response.body === null) return new Uint8Array(await response.arrayBuffer());
+  if ((declaredLength(response) ?? 0) > expectedSize) {
+    await response.body.cancel();
+    throw oversized(url, expectedSize);
+  }
+  return boundedBytes(url, response.body, expectedSize);
+}
+
+async function fetchHttps(url: string, fetchImplementation: typeof fetch, deadlineMs: number, expectedSize: number | undefined): Promise<Uint8Array> {
   const signal = AbortSignal.timeout(deadlineMs);
   try {
-    return await untilDeadline(responseBytes(url, fetchImplementation, signal), signal);
+    return await untilDeadline(responseBytes(url, fetchImplementation, signal, expectedSize), signal);
   } catch (error) {
     if (error instanceof CacheRefusal) throw error;
     const detail = signal.aborted ? `${url} did not finish within ${deadlineMs} ms` : `${url} could not be fetched: ${(error as Error).message}`;
@@ -80,10 +110,10 @@ export function fetcherWith(options: FetcherOptions): Fetcher {
   const fetchImplementation = options.fetchImplementation ?? fetch;
   const deadlineMs = options.deadlineMs ?? DOWNLOAD_DEADLINE_MS;
   return {
-    async fetch(url) {
+    async fetch(url, expectedSize) {
       const scheme = schemeOf(url);
       if (scheme === "file:") return readFileUrl(url);
-      if (scheme === "https:") return fetchHttps(url, fetchImplementation, deadlineMs);
+      if (scheme === "https:") return fetchHttps(url, fetchImplementation, deadlineMs, expectedSize);
       throw new CacheRefusal(`${url} uses the scheme ${scheme || "(none)"}, which the cache does not fetch`, "serve the catalog's files over https or from a local directory");
     },
   };

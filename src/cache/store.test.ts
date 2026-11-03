@@ -45,6 +45,18 @@ describe("storeFile", () => {
     expect(fetcher.calls).toBe(0);
   });
 
+  it("tells the fetcher the size the catalog lists, so it can stop an oversized download", async () => {
+    const asked: Array<number | undefined> = [];
+    const fetcher: Fetcher = {
+      async fetch(_url, expectedSize) {
+        asked.push(expectedSize);
+        return new Uint8Array(CONTENT);
+      },
+    };
+    await storeFile(referenceTo(CONTENT), join(cache, "p.js"), fetcher);
+    expect(asked).toEqual([CONTENT.length]);
+  });
+
   it("refetches a cached file whose hash no longer matches", async () => {
     const path = join(cache, "p.js");
     writeFileSync(path, "corrupted");
