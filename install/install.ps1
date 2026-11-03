@@ -15,8 +15,10 @@ $RuntimeBuilds = @{
 $HostId = 'forebay-host'
 $InstallMarker = '.installed.json'
 $UnpackedMarker = '.unpacked'
-$FileKey = '^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$'
-$SemanticVersion = '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+$RequiredHostFiles = @('host.js', 'reconcile-worker.js', 'host.json')
+$FileKey = '^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*\z'
+$SemanticVersion = '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?\z'
+$Sha256Hex = '^[0-9a-f]{64}\z'
 
 function Stop-Install([string]$Detail, [string]$Fix) {
     throw "$Detail`nfix: $Fix"
@@ -79,7 +81,7 @@ function Receive-File([string]$Url, [string]$Path) {
 }
 
 function Receive-Verified([string]$Url, [string]$Path, [string]$Sha256, $Size) {
-    $part = "$Path.part"
+    $part = "$Path.$([guid]::NewGuid().ToString('N')).part"
     Receive-File $Url $part
     $sizeMatches = ($null -eq $Size) -or ((Get-Item -LiteralPath $part).Length -eq [long]$Size)
     if (-not $sizeMatches -or -not (Test-Sha256 $part $Sha256)) {
@@ -144,9 +146,9 @@ function Install-Runtime([string]$Cache, [string]$Platform) {
 function Read-CatalogIndex([string]$Catalog) {
     if ($Catalog -match '^https://') {
         $client = New-Object System.Net.WebClient
-        try { return $client.DownloadString($Catalog) } catch { Stop-Install "could not fetch $Catalog" 'check the network connection and the url, then run this again' } finally { $client.Dispose() }
+        try { return [System.Text.Encoding]::UTF8.GetString($client.DownloadData($Catalog)) } catch { Stop-Install "could not fetch $Catalog" 'check the network connection and the url, then run this again' } finally { $client.Dispose() }
     }
-    return [System.IO.File]::ReadAllText($Catalog)
+    return [System.IO.File]::ReadAllText($Catalog, [System.Text.Encoding]::UTF8)
 }
 
 function Get-HostFiles([string]$Catalog) {
@@ -159,6 +161,8 @@ function Get-HostFiles([string]$Catalog) {
     $entry = $null
     if ($version -match $SemanticVersion -and $null -ne $item.Value.versions) { $entry = $item.Value.versions.PSObject.Properties[$version] }
     if ($null -eq $entry -or $null -eq $entry.Value.files) { Stop-Install "the catalog lists no files for $HostId $version" "install from a catalog whose latest $HostId lists its files" }
+    $missing = @($RequiredHostFiles | Where-Object { $null -eq $entry.Value.files.PSObject.Properties[$_] })
+    if ($missing.Count -gt 0) { Stop-Install "the catalog lists $HostId $version without $($missing -join ', ')" "install from a catalog whose $HostId lists $($RequiredHostFiles -join ', ')" }
     $origin = New-Object System.Uri($Catalog)
     $directory = $origin.AbsolutePath.Substring(0, $origin.AbsolutePath.LastIndexOf('/') + 1)
     $files = @()
@@ -166,7 +170,7 @@ function Get-HostFiles([string]$Catalog) {
         $reference = $property.Value
         $url = New-Object System.Uri($origin, "$($reference.url)")
         $inside = if ($origin.Scheme -eq 'https') { $url.Scheme -eq 'https' } else { $url.Scheme -eq 'file' -and $url.Host -eq '' -and $url.AbsolutePath.StartsWith($directory, [System.StringComparison]::Ordinal) }
-        if (-not ($property.Name -cmatch $FileKey) -or -not $inside -or -not ("$($reference.sha256)" -cmatch '^[0-9a-f]{64}$') -or -not ($reference.size -is [int] -or $reference.size -is [long])) {
+        if (-not ($property.Name -cmatch $FileKey) -or -not $inside -or -not ("$($reference.sha256)" -cmatch $Sha256Hex) -or -not ($reference.size -is [int] -or $reference.size -is [long])) {
             Stop-Install "the catalog lists the $HostId file `"$($property.Name)`" with a name, url, sha256 or size the installer refuses" 'install from a catalog built by forebay-host catalog build'
         }
         $files += @{ Key = $property.Name; Url = $url.AbsoluteUri; Sha256 = "$($reference.sha256)"; Size = $reference.size }
@@ -192,8 +196,9 @@ function Install-HostBundle([string]$Cache, [string]$Catalog) {
         $changed = $true
     }
     if ($changed -or -not (Test-Path -LiteralPath $marker)) {
-        [System.IO.File]::WriteAllText("$marker.part", (@{ files = $hashes } | ConvertTo-Json))
-        Move-Item -LiteralPath "$marker.part" -Destination $marker -Force
+        $markerPart = "$marker.$([guid]::NewGuid().ToString('N')).part"
+        [System.IO.File]::WriteAllText($markerPart, (@{ files = $hashes } | ConvertTo-Json))
+        Move-Item -LiteralPath $markerPart -Destination $marker -Force
     }
     return Join-Path $directory 'host.js'
 }
@@ -229,6 +234,6 @@ if ($null -eq $prepared) {
     Complete-Install 1
 } else {
     $ErrorActionPreference = 'Continue'
-    & $prepared.Node $prepared.HostFile install --catalog $prepared.Catalog @($prepared.Rest)
+    & $prepared.Node $prepared.HostFile install "--catalog=$($prepared.Catalog)" @($prepared.Rest)
     Complete-Install $LASTEXITCODE
 }
