@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://forebay.github.io/host/catalog.schema.json",
+  "title": "Catalog index",
+  "description": "Lists each item's versions with file URLs, hashes and kinds. A marketplace is another catalog index.",
+  "type": "object",
+  "required": ["format", "items"],
+  "properties": {
+    "format": { "const": 1 },
+    "items": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/item" }
+    }
+  },
+  "definitions": {
+    "item": {
+      "type": "object",
+      "required": ["kind", "versions", "latest"],
+      "properties": {
+        "kind": { "enum": ["plugin", "host", "library"] },
+        "versions": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/version" }
+        },
+        "latest": { "type": "string", "minLength": 1 }
+      }
+    },
+    "version": {
+      "type": "object",
+      "anyOf": [{ "required": ["files"] }, { "required": ["platforms"] }],
+      "properties": {
+        "files": { "$ref": "#/definitions/files" },
+        "platforms": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["files"],
+            "properties": {
+              "files": { "$ref": "#/definitions/files" }
+            }
+          }
+        },
+        "packages": { "type": "object" }
+      }
+    },
+    "files": {
+      "type": "object",
+      "propertyNames": { "pattern": "^(?!/)(?!(?:[\\s\\S]*/)?\\.\\.(?:/|(?![\\s\\S])))[^\\\\]+(?![\\s\\S])" },
+      "additionalProperties": { "$ref": "#/definitions/fileRef" }
+    },
+    "fileRef": {
+      "type": "object",
+      "required": ["url", "sha256", "size"],
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}(?![\\s\\S])" },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

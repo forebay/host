@@ -5,3 +5,5 @@ docs/
 
 # Generated on the default branch by the readme job.
 README.md
+
+src/catalog/schema.generated.ts

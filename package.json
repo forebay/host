@@ -14,16 +14,17 @@
   "keywords": ["forebay", "ai-proxy", "ai", "llm", "core-library", "typescript"],
   "files": ["dist/", "README.md", "LICENSE"],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/embed-catalog-schema.mjs && tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
     "generate:runtime-types": "node siblings/typescript/scripts/generate-library-types.mjs siblings/library/runtime/library.json src/runtime/types.ts",
-    "test": "tsc --noEmit -p tsconfig.json && vitest run"
+    "test": "node scripts/embed-catalog-schema.mjs && tsc --noEmit -p tsconfig.json && vitest run"
   },
   "dependencies": {
     "@weivel/typescript": "file:./siblings/typescript"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
+    "ajv": "8.17.1",
     "typescript": "5.7.2",
     "vitest": "3.2.7"
   },

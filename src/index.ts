@@ -32,3 +32,7 @@ export { renderEntry, renderHeadless, renderHeadlessSettings } from "./ui/headle
 export type { HeadlessNode, HeadlessNodeError, HeadlessScreen, HostScreen, PluginScreen } from "./ui/headless.js";
 export { pluginList, presentItems, renderPluginList, threeStateList } from "./lists.js";
 export type { Detector, PresentedItem } from "./lists.js";
+export { readCatalog } from "./catalog/catalog.js";
+export type { Catalog, CatalogItem, CatalogRefusal, CatalogVersion, FileRef } from "./catalog/catalog.js";
+export { catalogSources, mergeCatalogs, readCatalogSources } from "./catalog/sources.js";
+export type { CatalogSource, CatalogSourceReading, MergedCatalog, SkippedSource } from "./catalog/sources.js";
