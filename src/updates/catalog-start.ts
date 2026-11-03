@@ -54,8 +54,8 @@ function candidatesOf(settings: Record<string, unknown>, defaults: Record<string
  */
 export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: string, settings: Record<string, unknown>, defaults: Record<string, string>): CatalogStart {
   const enabled = candidatesOf(settings, defaults);
-  const { run } = resolveVersions(currentCatalogs(catalog.sources, places.cache), enabled, installedVersions(places.cache));
-  recordReferences(places.state, hostId, run);
+  const { run, fetch } = resolveVersions(currentCatalogs(catalog.sources, places.cache), enabled, installedVersions(places.cache));
+  recordReferences(places.state, hostId, { run, next: Object.fromEntries(fetch.map(({ id, version }) => [id, version])) });
   const bundles = cacheBundleSource(places.cache, run);
   return {
     bundles,
@@ -68,6 +68,8 @@ export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: s
         transport: catalog.transport ?? defaultCatalogTransport(),
         fetcher: catalog.fetcher ?? defaultFetcher(),
         enabled,
+        hostId,
+        run,
         problems: () => bundles.problems(),
       }),
   };

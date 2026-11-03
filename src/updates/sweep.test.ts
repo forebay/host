@@ -34,15 +34,21 @@ afterEach(() => {
 describe("sweepCache", () => {
   it("keeps every version a reference file names and the newest installed, and removes the rest", () => {
     for (const version of ["1.0.0", "1.1.0", "1.2.0", "2.0.0"]) installed("a", version);
-    recordReferences(state, "claude-code", { a: "1.1.0" });
+    recordReferences(state, "claude-code", { run: { a: "1.1.0" }, next: {} });
     expect(sweepCache(cache, state).removed.sort()).toEqual(["a@1.0.0", "a@1.2.0"]);
     expect(["1.0.0", "1.1.0", "1.2.0", "2.0.0"].map((version) => present("a", version))).toEqual([false, true, false, true]);
   });
 
   it("keeps the versions two hosts' reference files name, so one host's sweep never takes the other's", () => {
     for (const version of ["1.0.0", "2.0.0", "3.0.0"]) installed("a", version);
-    recordReferences(state, "claude-code", { a: "1.0.0" });
-    recordReferences(state, "opencode", { a: "2.0.0" });
+    recordReferences(state, "claude-code", { run: { a: "1.0.0" }, next: {} });
+    recordReferences(state, "opencode", { run: { a: "2.0.0" }, next: {} });
+    expect(sweepCache(cache, state).removed).toEqual([]);
+  });
+
+  it("keeps a version a host scheduled for its next start, even one older than it runs", () => {
+    for (const version of ["1.0.0", "2.0.0", "3.0.0"]) installed("a", version);
+    recordReferences(state, "claude-code", { run: { a: "2.0.0" }, next: { a: "1.0.0" } });
     expect(sweepCache(cache, state).removed).toEqual([]);
   });
 
@@ -66,7 +72,7 @@ describe("sweepCache", () => {
     installed("a", "2.0.0");
     const outside = join(base, "outside");
     mkdirSync(outside);
-    recordReferences(state, "claude-code", { "..": "..", a: "../../../outside" });
+    recordReferences(state, "claude-code", { run: { "..": "..", a: "../../../outside" }, next: { a: "../.." } });
     expect(sweepCache(cache, state).removed).toEqual(["a@1.0.0"]);
     expect(existsSync(outside)).toBe(true);
   });

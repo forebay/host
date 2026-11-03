@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,8 @@ function plan(extra: Partial<UpdatePlan>): UpdatePlan {
     transport: { get: async () => ({ status: 200, body: catalog.index }) },
     fetcher: { fetch: async () => new Uint8Array() },
     enabled: [{ id: "a" }],
+    hostId: "test-host",
+    run: {},
     problems: () => [],
     ...extra,
   };
@@ -37,15 +39,23 @@ describe("startUpdates", () => {
     await vi.waitFor(() => expect(updates.progress().finished).toBe(true));
     expect(updates.progress().fetched).toEqual([]);
     expect(updates.progress().refused).toEqual([expect.objectContaining({ id: "a@1.0.0" })]);
+    expect(updates.progress().interrupted).toBe(false);
   });
 
-  it("stops while a fetch never answers", async () => {
+  it("stops while a fetch never answers, reporting the update interrupted rather than refused", async () => {
     const fetching = vi.fn(() => new Promise<Uint8Array>(() => {}));
     const updates = startUpdates(plan({ fetcher: { fetch: fetching } }));
     await vi.waitFor(() => expect(fetching).toHaveBeenCalled());
     await updates.stop();
-    expect(updates.progress().finished).toBe(true);
-    expect(updates.progress().fetched).toEqual([]);
+    expect(updates.progress()).toMatchObject({ fetched: [], refused: [], interrupted: true, finished: true });
+  });
+
+  it("records the versions scheduled for the next start before it fetches any of them", async () => {
+    const fetching = vi.fn(() => new Promise<Uint8Array>(() => {}));
+    const updates = startUpdates(plan({ fetcher: { fetch: fetching }, run: { a: "0.9.0" } }));
+    await vi.waitFor(() => expect(fetching).toHaveBeenCalled());
+    expect(JSON.parse(readFileSync(join(base, "state", "bundles", "test-host.json"), "utf8"))).toEqual({ run: { a: "0.9.0" }, next: { a: "1.0.0" } });
+    await updates.stop();
   });
 
   it("refetches a damaged version the start reported, even one the catalog's latest does not name", async () => {
