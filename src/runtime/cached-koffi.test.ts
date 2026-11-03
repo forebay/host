@@ -44,6 +44,7 @@ describe("the koffi stand-in", () => {
     standIn.useKoffiFrom(first);
     expect(typeof (standIn.default as Record<string, unknown>).load).toBe("function");
     standIn.useKoffiFrom(first);
+    standIn.useKoffiFrom(join(first, "..", "first"));
     expect(() => standIn.useKoffiFrom(join(base, "second"))).toThrow(/already loaded/);
   });
 });
