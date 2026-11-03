@@ -1,5 +1,5 @@
 import { CommandRefusal } from "../cli/command-refusal.js";
-import { openCacheSession, readRegistration, readRegistrations, startFromCache } from "../cli/cache-session.js";
+import { hostRunOf, openCacheSession, readRegistration, readRegistrations, startFromCache } from "../cli/cache-session.js";
 import type { CacheSession } from "../cli/cache-session.js";
 import { loaderIdentity } from "../install/loader-identity.js";
 import { readInstalledStandard } from "../loader/installed-standard.js";
@@ -60,7 +60,8 @@ async function runHeld(session: CacheSession, standard: LoaderStandard, binary: 
 }
 
 /**
- * Starts the loader's host with the plugins its settings enable, holds each background host its
+ * Starts the loader's host, at the version its references schedule once installed, with the plugins
+ * its settings enable, holds each background host its
  * `host.json` names, runs the application as this process's child, and answers the application's
  * exit code once the holds are dropped and the host has stopped.
  *
@@ -71,12 +72,12 @@ async function runHeld(session: CacheSession, standard: LoaderStandard, binary: 
  */
 export async function launchCommand(request: LaunchRequest, bundleFile: string, environment: Record<string, string>): Promise<number> {
   const session = openCacheSession(bundleFile, environment);
-  const loader = readRegistration(session, request.loaderId);
-  const standard = standardOf(session, request.loaderId, loader.version);
+  const run = hostRunOf(session, request.loaderId, readRegistration(session, request.loaderId).version);
+  const standard = standardOf(session, request.loaderId, run.version);
   const binary = applicationBinary(standard.application, environment);
   readRegistrations(session, standard.background);
-  const identity = loaderIdentity({ id: request.loaderId, version: loader.version, application: standard.application, pathCommands: standard.pathCommands, cache: session.location.cache, environment });
-  const running = await startFromCache(session, identity, environment);
+  const identity = loaderIdentity({ id: request.loaderId, version: run.version, application: standard.application, pathCommands: standard.pathCommands, cache: session.location.cache, environment });
+  const running = await startFromCache(session, identity, run, environment);
   try {
     return await runHeld(session, standard, binary, request, environment);
   } finally {

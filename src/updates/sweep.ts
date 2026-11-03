@@ -10,8 +10,8 @@ import { newestVersion } from "./semver.js";
 
 function referencedVersions(cache: string, state: string): Set<string> {
   const referenced = new Set<string>(hintedVersions(cache));
-  for (const { run, next } of readReferences(state)) {
-    for (const [id, version] of [...Object.entries(run), ...Object.entries(next)]) referenced.add(`${id}@${version}`);
+  for (const { run, next, rollback } of readReferences(state)) {
+    for (const [id, version] of [...Object.entries(run), ...Object.entries(next), ...Object.entries(rollback ?? {})]) referenced.add(`${id}@${version}`);
   }
   return referenced;
 }
@@ -70,7 +70,7 @@ function sweepBundles(cache: string, referenced: Set<string>, now: number): stri
 
 /**
  * Deletes every installed bundle version, and every library version per platform, that no host's
- * reference file names, as run or as scheduled for its next start, nor any boot hint names for the
+ * reference file names, as run, as scheduled for its next start or as kept for rollback, nor any boot hint names for the
  * start after (a command shim runs through the hint, so what it names must outlive any sweep), keeping each id's newest installed
  * version as the rollback.
  *

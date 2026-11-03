@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { holdersFile, readHolders, writeHolders } from "./holders.js";
+import { holdersFile, NO_HOLDERS, readHolders, writeHolders } from "./holders.js";
 import { selfExitWhenUnheld } from "./self-exit.js";
 
 const HOST = "background-fixture";
@@ -42,15 +42,18 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  for (const child of started) child.kill("SIGKILL");
-  await Promise.all(started.map(exited));
-  rmSync(state, { recursive: true, force: true });
+  try {
+    for (const child of started) child.kill("SIGKILL");
+    await Promise.all(started.map(exited));
+  } finally {
+    rmSync(state, { recursive: true, force: true });
+  }
 });
 
 describe("selfExitWhenUnheld", () => {
   it("keeps running while a holder lives, and ends within two intervals of the last one dying", async () => {
     const holder = sleeper();
-    writeHolders(state, HOST, { pid: process.pid, holders: [holder.pid as number] });
+    writeHolders(state, HOST, { ...NO_HOLDERS, pid: process.pid, holders: [holder.pid as number] });
     const done = settled(selfExitWhenUnheld(state, HOST, INTERVAL));
 
     await waitFor(INTERVAL * 3);
@@ -67,7 +70,7 @@ describe("selfExitWhenUnheld", () => {
   it("prunes a dead holder and keeps the live ones", async () => {
     const living = sleeper();
     const dying = sleeper();
-    writeHolders(state, HOST, { pid: process.pid, holders: [living.pid as number, dying.pid as number] });
+    writeHolders(state, HOST, { ...NO_HOLDERS, pid: process.pid, holders: [living.pid as number, dying.pid as number] });
     const controller = new AbortController();
     const running = selfExitWhenUnheld(state, HOST, INTERVAL, controller.signal);
 
@@ -75,24 +78,33 @@ describe("selfExitWhenUnheld", () => {
     await exited(dying);
     await waitFor(INTERVAL * 2 + 100);
 
-    expect(readHolders(state, HOST)).toEqual({ pid: process.pid, holders: [living.pid] });
+    expect(readHolders(state, HOST)).toMatchObject({ pid: process.pid, checkMilliseconds: INTERVAL, holders: [living.pid] });
+    expect(Date.now() - (readHolders(state, HOST).aliveAt as number)).toBeLessThanOrEqual(INTERVAL * 2);
     controller.abort();
     await running;
   });
 
-  it("ends when it is aborted, leaving the record as it was", async () => {
+  it("ends when it is aborted, leaving its holders recorded", async () => {
     const holder = sleeper();
-    writeHolders(state, HOST, { pid: process.pid, holders: [holder.pid as number] });
+    writeHolders(state, HOST, { ...NO_HOLDERS, pid: process.pid, holders: [holder.pid as number] });
     const controller = new AbortController();
     const running = selfExitWhenUnheld(state, HOST, INTERVAL, controller.signal);
     controller.abort();
     await running;
-    expect(readHolders(state, HOST)).toEqual({ pid: process.pid, holders: [holder.pid] });
+    expect(readHolders(state, HOST)).toMatchObject({ pid: process.pid, holders: [holder.pid] });
+  });
+
+  it("ends without touching the record when another process is recorded as the host", async () => {
+    const holder = sleeper();
+    const replacement = { pid: holder.pid as number, aliveAt: 5, checkMilliseconds: INTERVAL, holders: [holder.pid as number] };
+    writeHolders(state, HOST, replacement);
+    await selfExitWhenUnheld(state, HOST, INTERVAL);
+    expect(readHolders(state, HOST)).toEqual(replacement);
   });
 
   it("ends at once when nothing holds it", async () => {
     const started = Date.now();
     await selfExitWhenUnheld(state, HOST, INTERVAL);
-    expect(Date.now() - started).toBeLessThan(INTERVAL * 2 + 500);
+    expect(Date.now() - started).toBeLessThan(INTERVAL);
   });
 });

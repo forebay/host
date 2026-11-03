@@ -60,7 +60,8 @@ export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: s
   const { run, fetch } = resolveVersions(currentCatalogs(catalog.sources, places.cache), enabled, installedVersions(places.cache));
   const recorded = { ...catalog.references?.run, ...run };
   const kept = catalog.references?.next ?? {};
-  recordReferences(places.state, hostId, { run: recorded, next: { ...kept, ...Object.fromEntries(fetch.map(({ id, version }) => [id, version])) } });
+  const rollback = catalog.references?.rollback ?? {};
+  recordReferences(places.state, hostId, { run: recorded, next: { ...kept, ...Object.fromEntries(fetch.map(({ id, version }) => [id, version])) }, rollback });
   const bundles = cacheBundleSource(places.cache, run);
   return {
     bundles,
@@ -76,6 +77,7 @@ export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: s
         hostId,
         run: recorded,
         kept,
+        rollback,
         problems: () => bundles.problems(),
       }),
   };

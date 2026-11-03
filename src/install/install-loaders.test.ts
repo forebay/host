@@ -24,6 +24,7 @@ interface LoaderSpec {
   id: string;
   applicationId: string;
   pathCommands: { requested: string[]; minimum: number };
+  background?: string[];
 }
 
 let base: string;
@@ -46,15 +47,24 @@ function writeLoader(spec: LoaderSpec): string {
       packages: {},
     },
     pathCommands: spec.pathCommands,
-    background: [],
+    background: spec.background ?? [],
   };
   writeFileSync(join(directory, "host.json"), JSON.stringify(manifest));
   writeFileSync(join(directory, "host.js"), "export {};\n");
   return directory;
 }
 
-async function catalogOf(specs: LoaderSpec[]): Promise<Catalog> {
-  const inputs = specs.map((spec) => ({ kind: "host" as const, output: hostDirectoryOutput(writeLoader(spec)) }));
+function writePlainHost(id: string): string {
+  const directory = join(base, "hosts", id);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "host.json"), JSON.stringify({ id, version: "1.0.0", entry: "host.js" }));
+  writeFileSync(join(directory, "host.js"), "export {};\n");
+  return directory;
+}
+
+async function catalogOf(specs: LoaderSpec[], plainHosts: string[] = []): Promise<Catalog> {
+  const directories = [...specs.map(writeLoader), ...plainHosts.map(writePlainHost)];
+  const inputs = directories.map((directory) => ({ kind: "host" as const, output: hostDirectoryOutput(directory) }));
   const path = buildLocalCatalog(inputs, join(base, "catalog"));
   return installCatalog([{ kind: "local", path }], places.cache, emptyReport());
 }
@@ -123,6 +133,27 @@ describe("installLoaders without commands", () => {
     expect(report.loaders.map(({ id }) => id)).toEqual(["alpha-loader"]);
     expect(registration("beta-loader")).toBeUndefined();
     expect(readdirSync(join(places.cache, "bundles"))).toEqual(["alpha-loader"]);
+  });
+
+  it("installs and registers each background host a registered loader names, in a home of its own", async () => {
+    const catalog = await catalogOf([{ id: "alpha-loader", applicationId: "alpha", pathCommands: NO_COMMANDS, background: ["helper-host"] }], ["helper-host"]);
+    const report = reportOf([{ id: "alpha", state: "installed" }]);
+    await install(catalog, report);
+
+    expect(registration("helper-host")).toMatchObject({ kind: "host", version: "1.0.0", home: join(places.state, "home", "helper-host"), provenance: { method: "catalog", version: "1.0.0" } });
+    expect(readHostReferences(places.state, "helper-host").run).toEqual({ "helper-host": "1.0.0" });
+    expect(existsSync(join(places.cache, "bundles", "helper-host", "1.0.0", "host.json"))).toBe(true);
+    expect(report.unavailable).toEqual([]);
+  });
+
+  it("reports a background host the catalog does not list, and still registers its loader", async () => {
+    const catalog = await catalogOf([{ id: "alpha-loader", applicationId: "alpha", pathCommands: NO_COMMANDS, background: ["absent-host"] }]);
+    const report = reportOf([{ id: "alpha", state: "installed" }]);
+    await install(catalog, report);
+
+    expect(report.loaders.map(({ id }) => id)).toEqual(["alpha-loader"]);
+    expect(report.unavailable).toMatchObject([{ id: "absent-host", detail: expect.stringContaining("no catalog source lists a host absent-host") }]);
+    expect(registration("absent-host")).toBeUndefined();
   });
 
   it("keeps the first install's provenance on a second install", async () => {

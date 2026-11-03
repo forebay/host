@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { holdersFile, isProcessAlive, readHolders, withHoldersLock, writeHolders } from "./holders.js";
+import { holdersFile, isHostRunning, isProcessAlive, NO_HOLDERS, readHolders, withHoldersLock, writeHolders } from "./holders.js";
 
 const HOST = "background-fixture";
 
@@ -38,22 +38,23 @@ afterEach(() => {
 
 describe("the holders file", () => {
   it("reads back what was written, and reads as empty when there is none", () => {
-    expect(readHolders(state, HOST)).toEqual({ pid: null, holders: [] });
-    writeHolders(state, HOST, { pid: 41, holders: [7, 9] });
-    expect(readHolders(state, HOST)).toEqual({ pid: 41, holders: [7, 9] });
-    expect(JSON.parse(readFileSync(holdersFile(state, HOST), "utf8"))).toEqual({ pid: 41, holders: [7, 9] });
+    expect(readHolders(state, HOST)).toEqual(NO_HOLDERS);
+    const record = { pid: 41, aliveAt: 1000, checkMilliseconds: 200, holders: [7, 9] };
+    writeHolders(state, HOST, record);
+    expect(readHolders(state, HOST)).toEqual(record);
+    expect(JSON.parse(readFileSync(holdersFile(state, HOST), "utf8"))).toEqual(record);
   });
 
   it("removes the file once it records neither a process nor a holder", () => {
-    writeHolders(state, HOST, { pid: 41, holders: [] });
-    writeHolders(state, HOST, { pid: null, holders: [] });
+    writeHolders(state, HOST, { ...NO_HOLDERS, pid: 41 });
+    writeHolders(state, HOST, NO_HOLDERS);
     expect(existsSync(holdersFile(state, HOST))).toBe(false);
   });
 
   it("reads a file that is not a holders record as empty", () => {
     mkdirSync(join(state, "processes"), { recursive: true });
     writeFileSync(holdersFile(state, HOST), "{ not json");
-    expect(readHolders(state, HOST)).toEqual({ pid: null, holders: [] });
+    expect(readHolders(state, HOST)).toEqual(NO_HOLDERS);
   });
 
   it("refuses a host id that would place the file outside the processes folder", () => {
@@ -91,6 +92,13 @@ describe("withHoldersLock", () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
+  it("leaves a lock that is no longer its own", async () => {
+    await withHoldersLock(state, HOST, () => {
+      writeFileSync(lockFile(), `${process.pid} another-locker`);
+    });
+    expect(readFileSync(lockFile(), "utf8")).toBe(`${process.pid} another-locker`);
+  });
+
   it("waits for a fresh lock a live process holds", async () => {
     writeLock(process.pid);
     let entered = false;
@@ -102,6 +110,27 @@ describe("withHoldersLock", () => {
     rmSync(lockFile());
     await waiting;
     expect(entered).toBe(true);
+  });
+});
+
+describe("isHostRunning", () => {
+  const now = 100000;
+
+  it("answers true for a live pid that stamped itself within three of its checks", () => {
+    expect(isHostRunning({ pid: process.pid, aliveAt: now - 550, checkMilliseconds: 200, holders: [] }, now)).toBe(true);
+  });
+
+  it("answers false for a live pid whose stamp is older than three checks, as when the pid was reused", () => {
+    expect(isHostRunning({ pid: process.pid, aliveAt: now - 650, checkMilliseconds: 200, holders: [] }, now)).toBe(false);
+  });
+
+  it("answers false for a dead pid, and for a record that was never stamped", () => {
+    expect(isHostRunning({ pid: exitedPid(), aliveAt: now, checkMilliseconds: 200, holders: [] }, now)).toBe(false);
+    expect(isHostRunning({ pid: process.pid, aliveAt: null, checkMilliseconds: null, holders: [] }, now)).toBe(false);
+  });
+
+  it("judges a host that has not checked yet by the default interval", () => {
+    expect(isHostRunning({ pid: process.pid, aliveAt: now - 14000, checkMilliseconds: null, holders: [] }, now)).toBe(true);
   });
 });
 

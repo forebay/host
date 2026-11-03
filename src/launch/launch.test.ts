@@ -1,17 +1,21 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readBootHint } from "../boot/boot-hint.js";
 import { bootEntryFile } from "../boot/boot-install.js";
+import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
 import type { EcosystemCatalog } from "../__fixtures__/ecosystem-catalog.js";
 import { fakeApplicationStart, installFakeApplication, releaseFakeApplication, SIGNALS_VARIABLE, windowsSystemVariables } from "../__fixtures__/fake-application.js";
 import type { FakeApplicationStart } from "../__fixtures__/fake-application.js";
 import { APPLICATION_ID, BACKGROUND_ID, installLaunchEcosystem, launchCatalog, LOADER_ID } from "../__fixtures__/launch-ecosystem.js";
 import type { LaunchEcosystem } from "../__fixtures__/launch-ecosystem.js";
 import { holdersFile, isProcessAlive, readHolders } from "../processes/holders.js";
-import { readHostReferences } from "../updates/references.js";
+import { openRuntime, siblingRuntime } from "../runtime/open.js";
+import { readHostReferences, recordReferences, removeHostReferences } from "../updates/references.js";
+import { sweepCache } from "../updates/sweep.js";
 
 const INTERVAL = 500;
 /** What a background host may take beyond its holder checks to stop its plugins and exit. */
@@ -24,20 +28,38 @@ interface Launcher {
   stderr: () => string;
 }
 
-let workspace: string;
+let workspace: string | undefined;
 let catalog: EcosystemCatalog;
 let base: string;
 let signals: string;
-let ecosystem: LaunchEcosystem;
+let ecosystem: LaunchEcosystem | undefined;
 let launchers: Launcher[];
 let backgroundPids: Set<number>;
 
+function installed(): LaunchEcosystem {
+  if (ecosystem === undefined) throw new Error("the launch ecosystem was not installed");
+  return ecosystem;
+}
+
+function state(): string {
+  return installed().places.state;
+}
+
+function registeredVersion(id: string): unknown {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    return runtime.registry.get({ places: installed().places, id }).registration?.version;
+  } finally {
+    runtime.close();
+  }
+}
+
 function launcherEnvironment(path: string): Record<string, string> {
-  return { ...ecosystem.environment, PATH: path, [SIGNALS_VARIABLE]: signals, ...windowsSystemVariables() };
+  return { ...installed().environment, PATH: path, [SIGNALS_VARIABLE]: signals, ...windowsSystemVariables() };
 }
 
 function launch(applicationArguments: string[], path = join(base, "bin")): Launcher {
-  const child = spawn(process.execPath, [bootEntryFile(ecosystem.places.cache), "forebay-host", "launch", LOADER_ID, ...applicationArguments], {
+  const child = spawn(process.execPath, [bootEntryFile(installed().places.cache), "forebay-host", "launch", LOADER_ID, ...applicationArguments], {
     cwd: tmpdir(),
     env: launcherEnvironment(path),
     stdio: ["ignore", "pipe", "pipe"],
@@ -71,7 +93,7 @@ function applicationStarted(tag: string): Promise<FakeApplicationStart> {
 function backgroundHeldBy(count: number): Promise<number> {
   return until(
     () => {
-      const record = readHolders(ecosystem.places.state, BACKGROUND_ID);
+      const record = readHolders(state(), BACKGROUND_ID);
       if (record.pid !== null) backgroundPids.add(record.pid);
       return record.pid !== null && record.holders.length === count ? record.pid : undefined;
     },
@@ -128,10 +150,11 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(() => {
-  rmSync(workspace, { recursive: true, force: true });
+  if (workspace !== undefined) rmSync(workspace, { recursive: true, force: true });
 });
 
 beforeEach(async () => {
+  ecosystem = undefined;
   base = mkdtempSync(join(tmpdir(), "host-launch-"));
   signals = join(base, "signals");
   mkdirSync(signals);
@@ -141,31 +164,41 @@ beforeEach(async () => {
   ecosystem = await installLaunchEcosystem(base, catalog, { "processes.holderCheckMilliseconds": INTERVAL });
 }, 120000);
 
-afterEach(async () => {
-  const background = existsSync(holdersFile(ecosystem.places.state, BACKGROUND_ID)) ? readHolders(ecosystem.places.state, BACKGROUND_ID).pid : null;
-  const pids = [...launchers.map((launcher) => launcher.child.pid), ...startedApplicationPids(), background, ...backgroundPids].filter((pid): pid is number => pid !== undefined && pid !== null);
+function recordedBackgroundPid(): number | null {
+  return ecosystem === undefined ? null : readHolders(ecosystem.places.state, BACKGROUND_ID).pid;
+}
+
+async function stopEverythingStarted(): Promise<void> {
+  const pids = [...launchers.map((launcher) => launcher.child.pid), ...startedApplicationPids(), recordedBackgroundPid(), ...backgroundPids].filter((pid): pid is number => pid !== undefined && pid !== null);
   for (const pid of pids) killIfAlive(pid);
   await Promise.all(launchers.map((launcher) => launcher.exit));
   await Promise.all(pids.map((pid) => gone(pid, 10000)));
-  await removeOnceReleased(base);
+}
+
+afterEach(async () => {
+  try {
+    await stopEverythingStarted();
+  } finally {
+    await removeOnceReleased(base);
+  }
 });
 
 describe("forebay-host launch, through the boot entry and the real host bundle", () => {
-  it("starts the background host, runs the application with its arguments, and answers its exit code once both stop", async () => {
+  it("starts the background host, runs the application with its arguments, and answers its exit code, the background host stopping itself within two intervals", async () => {
     const launcher = launch(["--", "only", "7", "--keep"]);
     const started = await applicationStarted("only");
     const background = await backgroundHeldBy(1);
 
     expect(started.argv).toEqual(["only", "7", "--keep"]);
-    expect(readHolders(ecosystem.places.state, BACKGROUND_ID).holders).toEqual([launcher.child.pid]);
+    expect(readHolders(state(), BACKGROUND_ID).holders).toEqual([launcher.child.pid]);
     expect(isProcessAlive(background)).toBe(true);
-    expect(readHostReferences(ecosystem.places.state, LOADER_ID).run[LOADER_ID]).toBe("1.0.0");
+    expect(readHostReferences(state(), LOADER_ID).run[LOADER_ID]).toBe("1.0.0");
 
     releaseFakeApplication(signals, "only");
 
     expect(await launcher.exit).toBe(7);
-    await gone(background, STOP_ALLOWANCE);
-    expect(existsSync(holdersFile(ecosystem.places.state, BACKGROUND_ID))).toBe(false);
+    await gone(background, INTERVAL * 2 + STOP_ALLOWANCE);
+    expect(existsSync(holdersFile(state(), BACKGROUND_ID))).toBe(false);
   });
 
   it("shares one background process between two launchers, kept by the first's exit and stopped by the second's", async () => {
@@ -180,11 +213,11 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
     expect(await first.exit).toBe(0);
     await new Promise((resolve) => setTimeout(resolve, INTERVAL * 3));
     expect(isProcessAlive(background)).toBe(true);
-    expect(readHolders(ecosystem.places.state, BACKGROUND_ID)).toEqual({ pid: background, holders: [second.child.pid] });
+    expect(readHolders(state(), BACKGROUND_ID)).toMatchObject({ pid: background, holders: [second.child.pid] });
 
     releaseFakeApplication(signals, "second");
     expect(await second.exit).toBe(0);
-    await gone(background, STOP_ALLOWANCE);
+    await gone(background, INTERVAL * 2 + STOP_ALLOWANCE);
     const left = [first.child.pid, second.child.pid, background, ...startedApplicationPids()].filter((pid) => pid !== undefined && isProcessAlive(pid));
     expect(left).toEqual([]);
   });
@@ -208,7 +241,38 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
     expect(await launcher.exit).toBe(1);
     expect(launcher.stderr()).toContain(`${APPLICATION_ID} is not on the PATH`);
     expect(launcher.stderr()).toContain("fix: ");
-    expect(existsSync(join(ecosystem.places.state, "processes", `${BACKGROUND_ID}.json`))).toBe(false);
+    expect(existsSync(join(state(), "processes", `${BACKGROUND_ID}.json`))).toBe(false);
+  });
+
+  it("runs the loader version its references schedule, keeping the one it ran for rollback until a later start", async () => {
+    const bundles = join(installed().places.cache, "bundles", LOADER_ID);
+    cpSync(join(bundles, "1.0.0"), join(bundles, "2.0.0"), { recursive: true });
+    recordReferences(state(), LOADER_ID, { run: { [LOADER_ID]: "1.0.0" }, next: { [LOADER_ID]: "2.0.0" } });
+    removeHostReferences(state(), "forebay-host");
+
+    const switching = launch(["switching", "0"]);
+    await applicationStarted("switching");
+    const switched = readHostReferences(state(), LOADER_ID);
+    expect(switched.run[LOADER_ID]).toBe("2.0.0");
+    expect(switched.rollback).toEqual({ [LOADER_ID]: "1.0.0" });
+    expect(switched.next[LOADER_ID]).toBeUndefined();
+    expect(registeredVersion(LOADER_ID)).toBe("2.0.0");
+    const standalone = readHostReferences(state(), "forebay-host");
+    expect(standalone.run).toMatchObject({ "forebay-host": catalog.hostVersion, runtime: expect.any(String), koffi: expect.any(String) });
+    expect(readBootHint(installed().places.cache, "forebay-host")?.host).toBe(catalog.hostVersion);
+    releaseFakeApplication(signals, "switching");
+    expect(await switching.exit).toBe(0);
+    sweepCache(installed().places.cache, state());
+    expect(existsSync(join(bundles, "1.0.0"))).toBe(true);
+
+    const later = launch(["later", "0"]);
+    await applicationStarted("later");
+    expect(readHostReferences(state(), LOADER_ID).rollback).toBeUndefined();
+    releaseFakeApplication(signals, "later");
+    expect(await later.exit).toBe(0);
+    sweepCache(installed().places.cache, state());
+    expect(existsSync(join(bundles, "1.0.0"))).toBe(false);
+    expect(existsSync(join(bundles, "2.0.0"))).toBe(true);
   });
 
   it.skipIf(process.platform === "win32")("passes a SIGTERM on to the application and answers 128 plus its number", async () => {
@@ -220,6 +284,6 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
 
     expect(await launcher.exit).toBe(143);
     expect(isProcessAlive(started.pid)).toBe(false);
-    await gone(background, STOP_ALLOWANCE);
+    await gone(background, INTERVAL * 2 + STOP_ALLOWANCE);
   });
 });

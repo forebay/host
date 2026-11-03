@@ -1,13 +1,16 @@
+import { join } from "node:path";
 import { installBootEntry } from "../boot/boot-install.js";
 import type { BundleLocation } from "../cache/bundle-location.js";
-import { bootFromCache } from "../install/boot-from-cache.js";
+import { checkInstalled } from "../cache/install-marker.js";
+import { bootFromCache, hostLibraryReferences } from "../install/boot-from-cache.js";
 import type { CacheBoot } from "../install/boot-from-cache.js";
 import { catalogProvenance, FOREBAY_HOST_ID } from "../install/forebay-host.js";
 import type { HostIdentity } from "../identity.js";
 import { openRuntime } from "../runtime/open.js";
 import { startHost } from "../start.js";
 import type { RunningHost } from "../start.js";
-import { readHostReferences } from "../updates/references.js";
+import { currentCatalogs } from "../updates/current-catalogs.js";
+import { readHostReferences, recordReferences } from "../updates/references.js";
 import { CommandRefusal } from "./command-refusal.js";
 import { installedHostAt, readHostSetup } from "./installed-host.js";
 import type { HostSetup } from "./installed-host.js";
@@ -65,21 +68,73 @@ export function readRegistration(session: CacheSession, id: string): RegisteredH
   return readRegistrations(session, [id])[id] as RegisteredHostRecord;
 }
 
+/** Which version of a host bundle one start runs, what stays scheduled after it, and what it switched away from. */
+export interface HostRun {
+  version: string;
+  next: Record<string, string>;
+  rollback: Record<string, string>;
+}
+
+function isInstalledBundle(cache: string, hostId: string, version: string): boolean {
+  return checkInstalled(join(cache, "bundles", hostId, version)).kind === "intact";
+}
+
+function withoutId(versions: Record<string, string>, id: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(versions).filter(([key]) => key !== id));
+}
+
 /**
- * Starts `identity` from the cache with the plugins its settings enable, checking the catalog in the
- * background, and records the host bundle and libraries it runs as its references.
+ * The version of host `hostId` this start runs: the one its references schedule for the next start
+ * once that is installed intact, else the `registered` one (spec 7.2). A switch keeps the version
+ * switched from for rollback until a later start.
+ */
+export function hostRunOf(session: CacheSession, hostId: string, registered: string): HostRun {
+  const recorded = readHostReferences(session.setup.places.state, hostId);
+  const scheduled = recorded.next[hostId];
+  const switching = scheduled !== undefined && scheduled !== registered && isInstalledBundle(session.location.cache, hostId, scheduled);
+  const version = switching ? scheduled : registered;
+  const next = scheduled === version ? withoutId(recorded.next, hostId) : recorded.next;
+  return { version, next, rollback: switching ? { [hostId]: registered } : {} };
+}
+
+/**
+ * Records, as a start of the standalone host does, the host bundle and libraries this process runs
+ * under the standalone host's references, and the libraries and host version its next start loads in
+ * its boot hint, which every command and background host boots through.
+ */
+function recordStandaloneHost(session: CacheSession): void {
+  const { location, boot, setup } = session;
+  const { state } = setup.places;
+  const resolved = hostLibraryReferences({
+    cache: location.cache,
+    state,
+    hostId: FOREBAY_HOST_ID,
+    catalog: currentCatalogs(setup.sources, location.cache),
+    settings: setup.settings,
+    loaded: boot.libraries,
+    running: { [FOREBAY_HOST_ID]: location.version },
+  });
+  const recorded = readHostReferences(state, FOREBAY_HOST_ID);
+  recordReferences(state, FOREBAY_HOST_ID, { ...recorded, run: { ...recorded.run, ...resolved.run }, next: resolved.next });
+}
+
+/**
+ * Starts `identity` at `run`'s version from the cache with the plugins its settings enable, checking
+ * the catalog in the background, and records the host bundles and libraries it runs as its
+ * references, the standalone host's included.
  *
  * @implNote The registration's first provenance wins, so the catalog provenance given here is used
  * only for a host whose registration was lost.
  */
-export function startFromCache(session: CacheSession, identity: HostIdentity, environment: Record<string, string>): Promise<RunningHost> {
+export function startFromCache(session: CacheSession, identity: HostIdentity, run: HostRun, environment: Record<string, string>): Promise<RunningHost> {
   const { location, boot, setup } = session;
-  const run = { [identity.id]: identity.version, runtime: boot.libraries.runtime, koffi: boot.libraries.koffi };
+  recordStandaloneHost(session);
+  const running = { [identity.id]: run.version, [FOREBAY_HOST_ID]: location.version, runtime: boot.libraries.runtime, koffi: boot.libraries.koffi };
   return startHost({
-    identity,
+    identity: { ...identity, version: run.version },
     runtime: boot.runtime,
-    catalog: { sources: setup.sources, references: { run, next: readHostReferences(setup.places.state, identity.id).next } },
-    provenance: catalogProvenance(location.cache, identity.id, identity.version, new Date()),
+    catalog: { sources: setup.sources, references: { run: running, next: run.next, rollback: run.rollback } },
+    provenance: catalogProvenance(location.cache, identity.id, run.version, new Date()),
     environment,
   });
 }

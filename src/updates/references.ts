@@ -6,10 +6,14 @@ import { isRecord } from "../plugins/is-record.js";
 
 const REFERENCE_EXTENSION = ".json";
 
-/** The bundle versions one host holds: what it runs now, and what it scheduled for its next start. */
+/**
+ * The bundle versions one host holds: what it runs now, what it scheduled for its next start, and
+ * what it ran before this start switched it, kept so the switch can be rolled back until a later start.
+ */
 export interface HostReferences {
   run: Record<string, string>;
   next: Record<string, string>;
+  rollback?: Record<string, string>;
 }
 
 function referencesFolder(state: string): string {
@@ -32,7 +36,8 @@ function isVersionMap(value: unknown): value is Record<string, string> {
 function referencesOf(text: string): HostReferences | undefined {
   try {
     const value: unknown = JSON.parse(text);
-    return isRecord(value) && isVersionMap(value.run) && isVersionMap(value.next) ? { run: value.run, next: value.next } : undefined;
+    if (!isRecord(value) || !isVersionMap(value.run) || !isVersionMap(value.next)) return undefined;
+    return isVersionMap(value.rollback) && Object.keys(value.rollback).length > 0 ? { run: value.run, next: value.next, rollback: value.rollback } : { run: value.run, next: value.next };
   } catch {
     return undefined;
   }
@@ -55,8 +60,8 @@ function referenceNames(folder: string): string[] {
 }
 
 /**
- * Records which bundle versions this host runs and which it fetches for its next start, so a sweep
- * from any host sharing the cache keeps both.
+ * Records which bundle versions this host runs, which it fetches for its next start and which it
+ * keeps for rollback, so a sweep from any host sharing the cache keeps all three.
  *
  * @implNote Written beside its name and renamed, so a sweep never reads a half-written file and takes it for none.
  */
@@ -65,7 +70,9 @@ export function recordReferences(state: string, hostId: string, references: Host
   mkdirSync(referencesFolder(state), { recursive: true });
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
-    writeFileSync(temporary, `${JSON.stringify({ run: references.run, next: references.next }, null, 2)}\n`);
+    const rollback = references.rollback ?? {};
+    const recorded = { run: references.run, next: references.next, ...(Object.keys(rollback).length > 0 ? { rollback } : {}) };
+    writeFileSync(temporary, `${JSON.stringify(recorded, null, 2)}\n`);
     renameSync(temporary, file);
   } finally {
     rmSync(temporary, { force: true });
@@ -77,7 +84,7 @@ export function removeHostReferences(state: string, hostId: string): void {
   rmSync(referenceFile(state, hostId), { force: true });
 }
 
-/** Every host's recorded versions, ordered by host; a file that is not two maps of versions is skipped. */
+/** Every host's recorded versions, ordered by host; a file that is not at least two maps of versions is skipped. */
 export function readReferences(state: string): HostReferences[] {
   const folder = referencesFolder(state);
   return referenceNames(folder).flatMap((name) => {

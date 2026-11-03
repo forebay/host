@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { bootEntryFile } from "../boot/boot-install.js";
 import { FOREBAY_HOST_ID } from "../install/forebay-host.js";
-import { isProcessAlive, liveHolders, readHolders, withHoldersLock, writeHolders } from "./holders.js";
+import { isHostRunning, liveHolders, readHolders, withHoldersLock, writeHolders } from "./holders.js";
 
 /** Starts a background host's process and answers its pid. */
 export type ProcessStarter = () => number;
@@ -12,19 +12,6 @@ export interface BackgroundStart {
   directory: string;
   hostId: string;
   environment: Record<string, string>;
-}
-
-/**
- * @implNote On Windows a signal cannot be delivered to another process, so the stop is
- * `process.kill` with no signal, which terminates it.
- */
-function stopProcess(pid: number): void {
-  try {
-    if (process.platform === "win32") process.kill(pid);
-    else process.kill(pid, "SIGTERM");
-  } catch {
-    return;
-  }
 }
 
 /**
@@ -47,29 +34,32 @@ export function backgroundHostStarter(start: BackgroundStart): ProcessStarter {
 }
 
 /**
- * Makes `holder` a holder of background host `hostId`, starting its process when none is alive, and
- * answers the pid of the process it holds.
+ * Makes `holder` a holder of background host `hostId`, starting its process when none is running,
+ * and answers the pid of the process it holds.
  */
 export function holdBackgroundHost(state: string, hostId: string, start: ProcessStarter, holder: number = process.pid): Promise<number> {
   return withHoldersLock(state, hostId, () => {
     const record = readHolders(state, hostId);
-    const pid = record.pid !== null && isProcessAlive(record.pid) ? record.pid : start();
-    const holders = liveHolders(record).filter((held) => held !== holder);
-    writeHolders(state, hostId, { pid, holders: [...holders, holder] });
+    const holders = [...liveHolders(record).filter((held) => held !== holder), holder];
+    if (isHostRunning(record)) {
+      writeHolders(state, hostId, { ...record, holders });
+      return record.pid as number;
+    }
+    const pid = start();
+    writeHolders(state, hostId, { pid, aliveAt: Date.now(), checkMilliseconds: null, holders });
     return pid;
   });
 }
 
-/** Drops `holder` from background host `hostId`, and stops its process when no live holder is left. */
+/**
+ * Drops `holder` from background host `hostId`.
+ *
+ * @remarks The host is never signalled: it sees no live holder at its next check and stops itself,
+ * which lets it stop its plugins on every operating system.
+ */
 export function releaseBackgroundHost(state: string, hostId: string, holder: number = process.pid): Promise<void> {
   return withHoldersLock(state, hostId, () => {
     const record = readHolders(state, hostId);
-    const holders = liveHolders(record).filter((held) => held !== holder);
-    if (holders.length > 0) {
-      writeHolders(state, hostId, { pid: record.pid, holders });
-      return;
-    }
-    if (record.pid !== null) stopProcess(record.pid);
-    writeHolders(state, hostId, { pid: null, holders: [] });
+    writeHolders(state, hostId, { ...record, holders: liveHolders(record).filter((held) => held !== holder) });
   });
 }

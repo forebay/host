@@ -1,6 +1,7 @@
 import { isRecord } from "../../plugins/is-record.js";
-import { DEFAULT_HOLDER_CHECK_MILLISECONDS, selfExitWhenUnheld } from "../../processes/self-exit.js";
-import { openCacheSession, readRegistration, startFromCache } from "../cache-session.js";
+import { DEFAULT_HOLDER_CHECK_MILLISECONDS } from "../../processes/holders.js";
+import { selfExitWhenUnheld } from "../../processes/self-exit.js";
+import { hostRunOf, openCacheSession, readRegistration, startFromCache } from "../cache-session.js";
 
 const STOP_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
 
@@ -32,7 +33,7 @@ export async function backgroundCommand(hostId: string, bundleFile: string, envi
     const session = openCacheSession(bundleFile, environment);
     const registration = readRegistration(session, hostId);
     const identity = { id: hostId, version: registration.version, home: registration.home, requiresCommand: registration.requiresCommand, commands: [], ...(registration.application === undefined ? {} : { application: registration.application }) };
-    const running = await startFromCache(session, identity, environment);
+    const running = await startFromCache(session, identity, hostRunOf(session, hostId, registration.version), environment);
     try {
       await selfExitWhenUnheld(session.setup.places.state, hostId, holderCheckOf(running.settings.all()), controller.signal);
     } finally {

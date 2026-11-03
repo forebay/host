@@ -6,6 +6,11 @@ import type { Provenance } from "../registration.js";
 /** The id the standalone host runs and records its references under. */
 export const FOREBAY_HOST_ID = "forebay-host";
 
+/** The home of a host that loads into no application, such as a background host: its own folder in the state place. */
+export function ownHostHome(places: HostPlaces, hostId: string): string {
+  return join(places.state, "home", hostId);
+}
+
 /**
  * The standalone host's home, in the state place, the only place this host owns.
  *
@@ -13,7 +18,7 @@ export const FOREBAY_HOST_ID = "forebay-host";
  * host is the one host, so its home is not any application's.
  */
 export function forebayHostHome(places: HostPlaces): string {
-  return join(places.state, "home", FOREBAY_HOST_ID);
+  return ownHostHome(places, FOREBAY_HOST_ID);
 }
 
 /** @implNote No commands: the standalone host writes nothing onto the PATH. */
