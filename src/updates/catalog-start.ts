@@ -26,12 +26,6 @@ export interface HostCatalog {
   fetcher?: Fetcher;
   /** Versions the host uses from the cache beside its plugins (its own bundle, its libraries), recorded so no sweep removes them. */
   references?: HostReferences;
-  /**
-   * Whether the start checks the catalog and fetches in the background; true when absent.
-   *
-   * @internal A one-shot command such as `status` reports and stops, so it never starts a check it would abandon.
-   */
-  checkUpdates?: boolean;
 }
 
 export interface CatalogStart {

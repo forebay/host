@@ -4,7 +4,7 @@ import { FOREBAY_HOST_ID, forebayHostIdentity } from "../../install/forebay-host
 import { bootLibraries, hostLibrariesOf, KOFFI_ID, recordBootLibraries, resolveHostLibraries, RUNTIME_ID, verifiedRuntimeSource } from "../../install/host-libraries.js";
 import type { Provenance } from "../../registration.js";
 import type { HostLibraries } from "../../runtime/cached-runtime.js";
-import { startHost } from "../../start.js";
+import { startHostWith } from "../../start.js";
 import { currentCatalogs } from "../../updates/current-catalogs.js";
 import type { HostReferences } from "../../updates/references.js";
 import { CommandRefusal } from "../command-refusal.js";
@@ -44,13 +44,17 @@ export async function statusCommand(bundleFile: string, environment: Record<stri
   const loaded = loadedLibraries(location);
   const source = verifiedRuntimeSource(location.cache, loaded, currentPlatformKey());
   const setup = readHostSetup(source, environment, location);
-  const running = await startHost({
-    identity: forebayHostIdentity(setup.places, location.version),
-    runtime: source,
-    catalog: { sources: setup.sources, references: resolveForNextStart(location, loaded, setup), checkUpdates: false },
-    provenance: provenanceOf(location),
-    environment,
-  });
+  const running = await startHostWith(
+    {
+      identity: forebayHostIdentity(setup.places, location.version),
+      runtime: source,
+      catalog: { sources: setup.sources, references: resolveForNextStart(location, loaded, setup) },
+      provenance: provenanceOf(location),
+      environment,
+    },
+    {},
+    { checkUpdates: false },
+  );
   try {
     output.out(JSON.stringify(running.status(), null, 2));
   } finally {
