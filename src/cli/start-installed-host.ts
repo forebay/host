@@ -1,13 +1,12 @@
-import { installBootEntry } from "../boot/boot-install.js";
 import type { BundleLocation } from "../cache/bundle-location.js";
-import { bootFromCache, hostLibraryReferences } from "../install/boot-from-cache.js";
+import { hostLibraryReferences } from "../install/boot-from-cache.js";
 import type { CacheBoot } from "../install/boot-from-cache.js";
 import { FOREBAY_HOST_ID, forebayHostIdentity, forebayHostProvenance } from "../install/forebay-host.js";
 import { startHostWith } from "../start.js";
 import type { RunningHost } from "../start.js";
 import { currentCatalogs } from "../updates/current-catalogs.js";
 import type { HostReferences } from "../updates/references.js";
-import { installedHostAt, readHostSetup } from "./installed-host.js";
+import { openCacheSession } from "./cache-session.js";
 import type { HostSetup } from "./installed-host.js";
 
 function referencesFor(location: BundleLocation, boot: CacheBoot, setup: HostSetup): HostReferences {
@@ -32,10 +31,7 @@ function referencesFor(location: BundleLocation, boot: CacheBoot, setup: HostSet
  * given here is used only for a host whose registration was lost.
  */
 export async function startInstalledHost(bundleFile: string, environment: Record<string, string>): Promise<RunningHost> {
-  const location = installedHostAt(bundleFile);
-  installBootEntry(location.cache, location.directory);
-  const boot = bootFromCache(location.cache, FOREBAY_HOST_ID);
-  const setup = readHostSetup(boot.runtime, environment, location);
+  const { location, boot, setup } = openCacheSession(bundleFile, environment);
   return startHostWith(
     {
       identity: forebayHostIdentity(setup.places, location.version),

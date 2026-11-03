@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Fetcher } from "../cache/fetcher.js";
 import type { Catalog } from "../catalog/catalog.js";
 import type { HostPlaces } from "../context/places.js";
-import { checkLoaderStandard } from "../loader/standard.js";
+import { readInstalledStandard } from "../loader/installed-standard.js";
 import type { LoaderApplication, LoaderStandard } from "../loader/standard.js";
 import { isRecord } from "../plugins/is-record.js";
 import { registerHost } from "../registration.js";
@@ -36,18 +34,6 @@ function loadersFor(catalog: Catalog, applicationIds: ReadonlySet<string>): Cata
   );
 }
 
-/** @implNote Read from the installed bundle, since the catalog carries only the application. */
-function readPathCommands(cache: string, id: string, version: string): LoaderStandard["pathCommands"] | string {
-  const file = join(cache, "bundles", id, version, "host.json");
-  try {
-    const manifest: unknown = JSON.parse(readFileSync(file, "utf8"));
-    const issue = checkLoaderStandard(manifest)[0];
-    return issue === undefined ? (manifest as LoaderStandard).pathCommands : `${file} is not a loader standard: ${issue.path} ${issue.detail}`;
-  } catch (error) {
-    return `${file} could not be read: ${(error as Error).message}`;
-  }
-}
-
 function messageOf(error: unknown): { detail: string; fix: string } {
   const { detail, fix } = isRecord(error) ? (error as { detail?: unknown; fix?: unknown }) : {};
   return {
@@ -71,13 +57,13 @@ function registerLoader(runtime: Runtime, options: InstallLoadersOptions, loader
 }
 
 function registerInstalled(runtime: Runtime, options: InstallLoadersOptions, report: InstallReport, loader: CatalogLoader, version: string): void {
-  const pathCommands = readPathCommands(options.places.cache, loader.id, version);
-  if (typeof pathCommands === "string") {
-    report.unavailable.push({ id: loader.id, detail: pathCommands, fix: "reinstall the loader from a catalog that lists a valid host.json" });
+  const standard = readInstalledStandard(options.places.cache, loader.id, version);
+  if (typeof standard === "string") {
+    report.unavailable.push({ id: loader.id, detail: standard, fix: "reinstall the loader from a catalog that lists a valid host.json" });
     return;
   }
   try {
-    report.loaders.push(registerLoader(runtime, options, loader, version, pathCommands));
+    report.loaders.push(registerLoader(runtime, options, loader, version, standard.pathCommands));
   } catch (error) {
     report.unavailable.push({ id: loader.id, ...messageOf(error) });
   }

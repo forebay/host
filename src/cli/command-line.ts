@@ -11,7 +11,8 @@ export interface Refusal {
   fix: string;
 }
 
-export type Dispatch = (argv: string[], output: CommandLineOutput) => Promise<void> | void;
+/** Runs one command; a command answering a number exits with it, any other with 0. */
+export type Dispatch = (argv: string[], output: CommandLineOutput) => Promise<number | void> | number | void;
 
 function isUsage(error: unknown): boolean {
   return error instanceof UsageError || ((error as { code?: string }).code?.startsWith("ERR_PARSE_ARGS") ?? false);
@@ -39,8 +40,8 @@ export async function runCommands(
   refusalOf: (error: unknown) => Refusal | undefined,
 ): Promise<number> {
   try {
-    await dispatch(argv, output);
-    return 0;
+    const code = await dispatch(argv, output);
+    return typeof code === "number" ? code : 0;
   } catch (error) {
     return exitCodeOf(error, output, usage, refusalOf);
   }

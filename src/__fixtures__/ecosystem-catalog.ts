@@ -52,9 +52,9 @@ function koffiInput(workspace: string): CatalogInput {
 
 /**
  * A local catalog of the host bundle, the runtime at two versions and koffi for this platform, the `announcer` and
- * `viewer` fixture plugins, and `rival` built for {@link ELSEWHERE_PLATFORM} only.
+ * `viewer` fixture plugins, `rival` built for {@link ELSEWHERE_PLATFORM} only, and every `extra` input.
  */
-export async function ecosystemCatalog(workspace: string): Promise<EcosystemCatalog> {
+export async function ecosystemCatalog(workspace: string, extra: readonly CatalogInput[] = []): Promise<EcosystemCatalog> {
   const host = await bundleHost(join(workspace, "host"));
   const inputs: CatalogInput[] = [
     { kind: "host", output: host },
@@ -64,6 +64,7 @@ export async function ecosystemCatalog(workspace: string): Promise<EcosystemCata
     await pluginInput(workspace, "viewer"),
     await pluginInput(workspace, "announcer"),
     await pluginInput(workspace, "rival", ELSEWHERE_PLATFORM),
+    ...extra,
   ];
   return { path: buildLocalCatalog(inputs, join(workspace, "catalog")), hostVersion: host.version };
 }
