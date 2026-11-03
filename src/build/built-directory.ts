@@ -3,6 +3,7 @@ import { join, resolve, sep } from "node:path";
 import { BuildRefusal } from "./build-refusal.js";
 import { parsedManifest, readItemManifest, versionOf } from "./bundle-manifest.js";
 import type { BundleOutput } from "./bundle-plugin.js";
+import { moduleMarkerKey } from "./module-marker.js";
 
 const LIBRARY_MANIFESTS = ["library.json", "package.json"];
 
@@ -12,13 +13,19 @@ function everyFile(directory: string): Record<string, string> {
   return Object.fromEntries(files.map((path) => [path.split(sep).join("/"), join(directory, path)]));
 }
 
-/** A directory `forebay-host bundle` wrote: its `plugin.json` and the entry it names, and nothing else beside them. */
+function bundledFile(root: string, key: string): string {
+  const path = join(root, key);
+  if (existsSync(path)) return path;
+  throw new BuildRefusal(`${root} has no ${key}, which its plugin.json's entry calls for`, "bundle the plugin into this directory first");
+}
+
+/** A directory `forebay-host bundle` wrote: its `plugin.json`, the entry it names and that entry's module marker, and nothing else beside them. */
 export function pluginDirectoryOutput(directory: string): BundleOutput {
   const root = resolve(directory);
   const manifest = readItemManifest(root, "plugin.json");
-  const entry = join(root, manifest.entry);
-  if (!existsSync(entry)) throw new BuildRefusal(`${root} has no ${manifest.entry}, the entry its plugin.json names`, "bundle the plugin into this directory first");
-  return { id: manifest.id, version: manifest.version, files: { [manifest.entry]: entry, "plugin.json": manifest.path } };
+  const keys = [manifest.entry, moduleMarkerKey(manifest.entry)].filter((key): key is string => key !== undefined);
+  const files = Object.fromEntries(keys.map((key) => [key, bundledFile(root, key)]));
+  return { id: manifest.id, version: manifest.version, files: { ...files, "plugin.json": manifest.path } };
 }
 
 /** A host bundle directory: every file in it, its id and version from `host.json`. */

@@ -47,7 +47,3 @@ export type { BundleProblem, CacheBundleSource } from "./cache/cache-bundle-sour
 export type { CatalogAnswer, CatalogCheck, CatalogTransport } from "./updates/check.js";
 export type { HostCatalog } from "./updates/catalog-start.js";
 export type { UpdateProgress } from "./updates/background.js";
-export { BuildRefusal } from "./build/build-refusal.js";
-export { bundlePlugin } from "./build/bundle-plugin.js";
-export type { BundleOutput } from "./build/bundle-plugin.js";
-export { buildLocalCatalog } from "./build/local-catalog.js";

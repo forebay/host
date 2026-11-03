@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { acceptsFileKey, acceptsItemId, acceptsVersion } from "../catalog/accepts.js";
 import { isRecord } from "../plugins/is-record.js";
 import { BuildRefusal } from "./build-refusal.js";
+import { isModuleMarkerName } from "./module-marker.js";
 
 const MANIFEST_FILE = "plugin.json";
 const DEFAULT_SOURCE = "src/index.ts";
@@ -49,13 +50,20 @@ export function versionOf(manifest: Record<string, unknown>, path: string): stri
   );
 }
 
+function isBundleOwnFile(entry: string): boolean {
+  return entry.toLowerCase() === MANIFEST_FILE || isModuleMarkerName(entry);
+}
+
 function entryOf(manifest: Record<string, unknown>, path: string): string {
   const entry = manifest.entry;
-  if (typeof entry === "string" && acceptsFileKey(entry)) return entry;
-  throw new BuildRefusal(
-    `${path} names the entry ${JSON.stringify(entry)}, which is not a relative path inside the bundle`,
-    'name the entry file in the manifest as a relative path with / separators, for example "entry": "index.mjs"',
-  );
+  if (typeof entry !== "string" || !acceptsFileKey(entry)) {
+    throw new BuildRefusal(
+      `${path} names the entry ${JSON.stringify(entry)}, which is not a relative path inside the bundle`,
+      'name the entry file in the manifest as a relative path with / separators, for example "entry": "index.js"',
+    );
+  }
+  if (!isBundleOwnFile(entry)) return entry;
+  throw new BuildRefusal(`${path} names the entry ${entry}, which the bundle's own ${MANIFEST_FILE} or package.json would replace`, 'name a script as the entry, for example "entry": "index.js"');
 }
 
 function sourceOf(manifest: Record<string, unknown>, repositoryRoot: string): string {
