@@ -5,7 +5,7 @@ import { BuildRefusal } from "./build-refusal.js";
 import { parsedManifest, readItemManifest, versionOf } from "./bundle-manifest.js";
 import type { BundleOutput } from "./bundle-plugin.js";
 import { requireLoaderStandard } from "./loader-standard-check.js";
-import { moduleMarkerKey } from "./module-marker.js";
+import { moduleMarkerKey } from "../cache/module-marker.js";
 
 const LIBRARY_MANIFESTS = ["library.json", "package.json"];
 

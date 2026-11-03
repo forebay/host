@@ -10,6 +10,7 @@ import { requireLoaderStandard } from "./loader-standard-check.js";
 
 const HOST_ENTRY = "host.js";
 const WORKER_ENTRY = "reconcile-worker.js";
+const BOOT_ENTRY = "boot.js";
 const MANIFEST_FILE = "host.json";
 
 /** @internal The host bundle with every source file inlined into it and every module it still imports; not part of the package entry. */
@@ -45,16 +46,18 @@ export async function bundledHost(outDirectory: string, standard?: LoaderStandar
   const out = resolve(outDirectory);
   const host = await bundleEntry(sourceOf("cli", "host-main"), join(out, HOST_ENTRY));
   const worker = await bundleEntry(sourceOf("context", "reconcile-worker"), join(out, WORKER_ENTRY));
+  const boot = await bundleEntry(sourceOf("boot", "boot-entry"), join(out, BOOT_ENTRY));
   const version = packageVersion();
-  const files = { ...writeEntry(out, HOST_ENTRY, host), ...writeEntry(out, WORKER_ENTRY, worker), [MANIFEST_FILE]: join(out, MANIFEST_FILE) };
+  const files = { ...writeEntry(out, HOST_ENTRY, host), ...writeEntry(out, WORKER_ENTRY, worker), ...writeEntry(out, BOOT_ENTRY, boot), [MANIFEST_FILE]: join(out, MANIFEST_FILE) };
   writeFile(files[MANIFEST_FILE], `${JSON.stringify({ id: FOREBAY_HOST_ID, version, entry: HOST_ENTRY, ...standard }, null, 2)}\n`);
-  const imports = [...new Set([...host.imports, ...worker.imports].map((entry) => entry.path))].sort();
-  return { output: { id: FOREBAY_HOST_ID, version, files }, inputs: [...new Set([...host.inputs, ...worker.inputs])].sort(), imports };
+  const imports = [...new Set([...host.imports, ...worker.imports, ...boot.imports].map((entry) => entry.path))].sort();
+  return { output: { id: FOREBAY_HOST_ID, version, files }, inputs: [...new Set([...host.inputs, ...worker.inputs, ...boot.inputs])].sort(), imports };
 }
 
 /**
  * Bundles the user-facing host into `host.js`, with `reconcile-worker.js` beside it as its own
- * entry, since the host starts it by its path, and a `host.json` naming the host's id and version.
+ * entry, since the host starts it by its path, `boot.js`, the versionless entry the cache copies
+ * out of the installed bundle, and a `host.json` naming the host's id and version.
  * A loader passes its `standard`, which `host.json` then carries as `application`, `pathCommands`
  * and `background`; a plain host passes none and its `host.json` is unchanged.
  *

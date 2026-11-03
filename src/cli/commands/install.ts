@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
+import { installBootEntry } from "../../boot/boot-install.js";
 import { defaultFetcher } from "../../cache/fetcher.js";
 import type { Catalog } from "../../catalog/catalog.js";
 import type { CatalogSource } from "../../catalog/sources.js";
@@ -86,7 +87,7 @@ function missingApplicationsHost(given: InstallArguments, options: InstallOption
  * Installs the ecosystem from a catalog into the cache the running host is installed in, and prints
  * the report as JSON; each `--plugin` is installed and enabled whatever the settings say.
  *
- * @remarks After the missing applications are resolved, every installed or detected application gets
+ * @remarks The cache's boot entry is made the running bundle's. After the missing applications are resolved, every installed or detected application gets
  * its loader installed and registered as a host of its own.
  *
  * @implNote The runtime and koffi are installed first, beside the bundle, because the places are the
@@ -104,13 +105,14 @@ export async function installCommand(
   const fetcher = defaultFetcher();
   const bootstrap = await bootstrapLibraries(sources, location.cache, fetcher);
   const source = verifiedRuntimeSource(location.cache, librariesOf(bootstrap), currentPlatformKey());
+  installBootEntry(location.cache, location.directory);
   const choices = choicesOf(given, bootstrap.catalog);
   const { places } = readHostSetup(source, environment, location);
   const options: InstallOptions = { catalog: sources, places, home: forebayHostHome(places), defaults: [], requested: given.plugins, fetcher, bootstrap };
   const report = await installEcosystem(options);
   if (report.unavailable.length === 0) {
     await resolveApplicationsForCommand({ catalog: bootstrap.catalog, environment, choices, ask }, missingApplicationsHost(given, options, bundleFile, environment), report);
-    await installLoaders({ catalog: bootstrap.catalog, places, runtimeSource: source, fetcher, environment, hostBundleFile: bundleFile }, report);
+    await installLoaders({ catalog: bootstrap.catalog, places, runtimeSource: source, fetcher, environment }, report);
   }
   output.out(JSON.stringify(report, null, 2));
   if (report.unavailable.length === 0) return;

@@ -1,3 +1,4 @@
+import { installBootEntry } from "../boot/boot-install.js";
 import type { BundleLocation } from "../cache/bundle-location.js";
 import { bootFromCache, hostLibraryReferences } from "../install/boot-from-cache.js";
 import type { CacheBoot } from "../install/boot-from-cache.js";
@@ -25,11 +26,14 @@ function referencesFor(location: BundleLocation, boot: CacheBoot, setup: HostSet
  * Starts the installed host from the cache with no background check, for a one-shot command that
  * reports and stops it.
  *
+ * @remarks The cache's boot entry is rewritten when it differs from the one this bundle carries.
+ *
  * @implNote The install registered the host, and the first registration wins, so the provenance
  * given here is used only for a host whose registration was lost.
  */
 export async function startInstalledHost(bundleFile: string, environment: Record<string, string>): Promise<RunningHost> {
   const location = installedHostAt(bundleFile);
+  installBootEntry(location.cache, location.directory);
   const boot = bootFromCache(location.cache, FOREBAY_HOST_ID);
   const setup = readHostSetup(boot.runtime, environment, location);
   return startHostWith(

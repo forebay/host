@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { acceptsFileKey, acceptsItemId, acceptsVersion } from "../catalog/accepts.js";
 import { isRecord } from "../plugins/is-record.js";
 import { BuildRefusal } from "./build-refusal.js";
-import { isModuleMarkerName } from "./module-marker.js";
+import { isModuleMarkerName } from "../cache/module-marker.js";
 
 const MANIFEST_FILE = "plugin.json";
 const DEFAULT_SOURCE = "src/index.ts";
