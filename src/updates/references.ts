@@ -72,6 +72,11 @@ export function recordReferences(state: string, hostId: string, references: Host
   }
 }
 
+/** Deletes the file `hostId` recorded its versions in; a host that recorded none is left as it is. */
+export function removeHostReferences(state: string, hostId: string): void {
+  rmSync(referenceFile(state, hostId), { force: true });
+}
+
 /** Every host's recorded versions, ordered by host; a file that is not two maps of versions is skipped. */
 export function readReferences(state: string): HostReferences[] {
   const folder = referencesFolder(state);

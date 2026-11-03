@@ -1,4 +1,5 @@
 import type { InstalledVersion, InstallRefusal } from "../cache/install-version.js";
+import type { RefusedCommand } from "../registration.js";
 
 /** What the install did about one catalog application: `installed` covers one already installed and one it just installed through `installedThrough`. */
 export interface ApplicationReport {
@@ -12,6 +13,15 @@ export interface ApplicationReport {
   unavailable?: Array<{ method: string; detail: string; fix: string }>;
 }
 
+/** One loader the install registered as a host of its own, with the commands it holds and the ones the runtime refused. */
+export interface LoaderReport {
+  id: string;
+  application: string;
+  home: string;
+  commands: string[];
+  refusedCommands: RefusedCommand[];
+}
+
 /** What one install did: what it fetched, what was already in the cache as `<id>@<version>`, what it could not install, which plugins it enabled and what it did about each catalog application. */
 export interface InstallReport {
   installed: Array<{ id: string; version: string }>;
@@ -19,10 +29,11 @@ export interface InstallReport {
   unavailable: Array<{ id: string; detail: string; fix: string }>;
   enabled: string[];
   applications: ApplicationReport[];
+  loaders: LoaderReport[];
 }
 
 export function emptyReport(): InstallReport {
-  return { installed: [], cached: [], unavailable: [], enabled: [], applications: [] };
+  return { installed: [], cached: [], unavailable: [], enabled: [], applications: [], loaders: [] };
 }
 
 export function recordAnswer(report: InstallReport, answer: InstalledVersion | InstallRefusal): void {
@@ -40,5 +51,6 @@ export function mergeReports(earlier: InstallReport, later: InstallReport): Inst
     unavailable: later.unavailable,
     enabled: later.enabled,
     applications: later.applications,
+    loaders: later.loaders,
   };
 }

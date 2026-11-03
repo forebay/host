@@ -9,6 +9,7 @@ import { forebayHostHome } from "../../install/forebay-host.js";
 import { KOFFI_ID, RUNTIME_ID, verifiedRuntimeSource } from "../../install/host-libraries.js";
 import type { InstallReport } from "../../install/install-report.js";
 import { installEcosystem } from "../../install/install-ecosystem.js";
+import { installLoaders } from "../../install/install-loaders.js";
 import type { InstallOptions } from "../../install/install-ecosystem.js";
 import { ApplicationChoiceError, checkApplicationIds, parseApplicationChoices, resolveMissingApplications } from "../../install/missing-applications.js";
 import type { MissingApplicationsHost, MissingApplicationsRequest } from "../../install/missing-applications.js";
@@ -85,6 +86,9 @@ function missingApplicationsHost(given: InstallArguments, options: InstallOption
  * Installs the ecosystem from a catalog into the cache the running host is installed in, and prints
  * the report as JSON; each `--plugin` is installed and enabled whatever the settings say.
  *
+ * @remarks After the missing applications are resolved, every installed or detected application gets
+ * its loader installed and registered as a host of its own.
+ *
  * @implNote The runtime and koffi are installed first, beside the bundle, because the places are the
  * runtime's answer: only then can the runtime say where the settings are.
  */
@@ -106,6 +110,7 @@ export async function installCommand(
   const report = await installEcosystem(options);
   if (report.unavailable.length === 0) {
     await resolveApplicationsForCommand({ catalog: bootstrap.catalog, environment, choices, ask }, missingApplicationsHost(given, options, bundleFile, environment), report);
+    await installLoaders({ catalog: bootstrap.catalog, places, runtimeSource: source, fetcher, environment, hostBundleFile: bundleFile }, report);
   }
   output.out(JSON.stringify(report, null, 2));
   if (report.unavailable.length === 0) return;

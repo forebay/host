@@ -214,7 +214,7 @@ describe("startHost", () => {
 
   describe("a command the library refuses before writing anything", () => {
     function withRefusedCommand(requiresCommand: boolean): HostIdentity {
-      return { ...identity, requiresCommand, commands: [{ name: "not a name", target: join(base, "bin", "thost") }] };
+      return { ...identity, requiresCommand, commands: [{ name: "not a name", target: join(base, "bin", "thost"), arguments: [] }] };
     }
 
     it("is recorded and does not stop a host that does not require a command", async () => {

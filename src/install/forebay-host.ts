@@ -21,14 +21,19 @@ export function forebayHostIdentity(places: HostPlaces, version: string): HostId
   return { id: FOREBAY_HOST_ID, version, home: forebayHostHome(places), requiresCommand: false, commands: [] };
 }
 
-/** How the standalone host at `version` in `cache` was installed: from a catalog, at `installedAt`. */
-export function forebayHostProvenance(cache: string, version: string, installedAt: Date): Provenance {
+/** How the host bundle `id` at `version` in `cache` was installed: from a catalog, at `installedAt`. */
+export function catalogProvenance(cache: string, id: string, version: string, installedAt: Date): Provenance {
   return {
     method: "catalog",
     version,
-    location: join(cache, "bundles", FOREBAY_HOST_ID, version),
+    location: join(cache, "bundles", id, version),
     os: process.platform,
     architecture: process.arch,
     installedAt: installedAt.toISOString(),
   };
+}
+
+/** How the standalone host at `version` in `cache` was installed: from a catalog, at `installedAt`. */
+export function forebayHostProvenance(cache: string, version: string, installedAt: Date): Provenance {
+  return catalogProvenance(cache, FOREBAY_HOST_ID, version, installedAt);
 }
