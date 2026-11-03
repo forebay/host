@@ -25,7 +25,7 @@ const CANDIDATES = [
     version: NODE_VERSION,
     archive: () => {
       const version = NODE_VERSION;
-      const suffix = { "win32-x64": "win-x64.zip", "linux-x64": "linux-x64.tar.xz", "darwin-x64": "darwin-x64.tar.xz", "darwin-arm64": "darwin-arm64.tar.xz" }[PLATFORM_KEY];
+      const suffix = { "win32-x64": "win-x64.zip", "linux-x64": "linux-x64.tar.gz", "darwin-x64": "darwin-x64.tar.gz", "darwin-arm64": "darwin-arm64.tar.gz" }[PLATFORM_KEY];
       const file = `node-v${version}-${suffix}`;
       return { file, url: `https://nodejs.org/dist/v${version}/${file}`, sums: `https://nodejs.org/dist/v${version}/SHASUMS256.txt` };
     },
