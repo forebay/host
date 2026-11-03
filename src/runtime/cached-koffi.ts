@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 
@@ -6,6 +7,15 @@ type Koffi = Record<string | symbol, unknown>;
 let directory: string | undefined;
 let loaded: Koffi | undefined;
 
+/** @implNote Compared by real path: macOS spells one temp folder both `/var/...` and `/private/var/...`. */
+function realDirectory(koffiDirectory: string): string {
+  try {
+    return realpathSync.native(koffiDirectory);
+  } catch {
+    return resolve(koffiDirectory);
+  }
+}
+
 /**
  * Tells the stand-in which cached koffi to load, `<cache>/libraries/koffi/<version>/<platform>/`.
  *
@@ -13,7 +23,7 @@ let loaded: Koffi | undefined;
  * refused rather than ignored: the main thread and its worker are always given the same one.
  */
 export function useKoffiFrom(koffiDirectory: string): void {
-  const given = resolve(koffiDirectory);
+  const given = realDirectory(koffiDirectory);
   if (loaded !== undefined && directory !== given) {
     throw new Error(`koffi from ${directory} is already loaded, so koffi from ${given} cannot be; start the host again to load it`);
   }
