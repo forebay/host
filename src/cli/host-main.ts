@@ -11,12 +11,12 @@ import { statusCommand } from "./commands/status.js";
 import { PROCESS_OUTPUT } from "./output.js";
 import type { CommandLineOutput } from "./output.js";
 
-const USAGE = ["usage:", "  forebay-host install --catalog <path or url> [--plugin <id>]...", "  forebay-host status"].join("\n");
+const USAGE = ["usage:", "  forebay-host install --catalog <path or url> [--plugin <id>]... [--application <id>=<method|skip>]...", "  forebay-host status"].join("\n");
 
 function runInstall(rest: string[], output: CommandLineOutput): Promise<void> {
-  const { values } = parseArgs({ args: rest, options: { catalog: { type: "string" }, plugin: { type: "string", multiple: true } } });
+  const { values } = parseArgs({ args: rest, options: { catalog: { type: "string" }, plugin: { type: "string", multiple: true }, application: { type: "string", multiple: true } } });
   if (values.catalog === undefined) throw new UsageError("--catalog <path or url> is required");
-  return installCommand({ catalog: values.catalog, plugins: values.plugin ?? [] }, fileURLToPath(import.meta.url), processEnvironment(), output);
+  return installCommand({ catalog: values.catalog, plugins: values.plugin ?? [], applications: values.application ?? [] }, fileURLToPath(import.meta.url), processEnvironment(), output);
 }
 
 function runStatus(rest: string[], output: CommandLineOutput): Promise<void> {

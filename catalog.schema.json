@@ -50,6 +50,34 @@
         "latest": {
           "type": "string",
           "pattern": "^(?![\\s\\S]*\\.\\.)[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]*[0-9A-Za-z-])?(\\+[0-9A-Za-z.-]*[0-9A-Za-z-])?(?![\\s\\S])"
+        },
+        "application": {
+          "$ref": "#/definitions/application"
+        },
+        "installMethod": {
+          "description": "The install method this plugin is a provider for, for example npm; an install planner matches a provider by exactly this member.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "plugin",
+              "library"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "application"
+          ]
         }
       }
     },
@@ -118,6 +146,81 @@
         "size": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "application": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "binary",
+        "home",
+        "packages"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binary": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?![\\s\\S])"
+        },
+        "home": {
+          "type": "object",
+          "required": [
+            "candidates"
+          ],
+          "properties": {
+            "envOverride": {
+              "type": "string",
+              "minLength": 1
+            },
+            "nativeEnv": {
+              "type": "string",
+              "minLength": 1
+            },
+            "candidates": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:~/|/|[A-Za-z]:[\\/])"
+              }
+            }
+          }
+        },
+        "packages": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "type": "object"
+                  }
+                }
+              }
+            ]
+          },
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?![\\s\\S])"
+          }
         }
       }
     }

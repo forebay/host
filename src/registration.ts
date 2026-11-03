@@ -58,7 +58,7 @@ function requestCommand(
   places: HostPlaces,
   identity: HostIdentity,
   environment: Record<string, string>,
-  command: { name: string; target: string },
+  command: { name: string; target: string; arguments: readonly string[] },
 ): Requested | undefined {
   try {
     const answered = runtime.commands.request({
@@ -68,6 +68,7 @@ function requestCommand(
       home: userHomeOf(environment),
       name: command.name,
       target: command.target,
+      arguments: [...command.arguments],
     });
     return answered.name === undefined ? undefined : { name: answered.name };
   } catch (error) {

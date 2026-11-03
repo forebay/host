@@ -1,6 +1,12 @@
 import type { UiItem } from "@weivel/typescript/host";
 import type { HostScreen } from "./ui/headless.js";
 import type { RunningHost } from "./start.js";
+import type { Catalog } from "./catalog/catalog.js";
+import type { HostPlaces } from "./context/places.js";
+import type { Runtime } from "./runtime/open.js";
+import type { MethodDetection } from "./methods/detection.js";
+import type { LoaderApplication } from "./loader/standard.js";
+import { detectApplication } from "./loader/detect-application.js";
 
 /** Answers whether a thing is on this machine. @implNote Cheap by contract: PATH, known locations, the registry, the application's files; never a launch, never the network. */
 export interface Detector {
@@ -86,4 +92,26 @@ export function renderPluginList(running: RunningHost, detectors: Detector[]): P
     title: "Plugins",
     nodes: [{ id: "plugins", component: "table", state: "ready", data: { items }, props: {} }],
   });
+}
+
+function registeredApplicationIds(runtime: Pick<Runtime, "registry">, places: HostPlaces): Set<string> {
+  const ids = runtime.registry.list({ places }).hosts.map((entry) => (entry.registration.application as { id?: unknown } | undefined)?.id);
+  return new Set(ids.filter((id): id is string => typeof id === "string"));
+}
+
+/** @implNote Installed means a registered host carries the application id; detected is PATH or a method's answer; a refused method answer never detects. */
+export function applicationList(
+  runtime: Pick<Runtime, "registry">,
+  catalog: Catalog,
+  places: HostPlaces,
+  environment: Record<string, string>,
+  providers: MethodDetection[],
+  platform: NodeJS.Platform = process.platform,
+): UiItem[] {
+  const registered = registeredApplicationIds(runtime, places);
+  const applications = Object.values(catalog.items).flatMap((item) => (item.kind === "host" && item.application ? [item.application] : []));
+  const toRow = ({ id, label }: LoaderApplication): UiItem => ({ id, label });
+  const installed = applications.filter(({ id }) => registered.has(id)).map(toRow);
+  const detected = applications.filter((application) => detectApplication(application, environment, providers, platform)).map(toRow);
+  return threeStateList(installed, detected, applications.map(toRow));
 }

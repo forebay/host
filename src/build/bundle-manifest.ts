@@ -21,6 +21,7 @@ export interface ItemManifest {
 export interface BundleManifest extends ItemManifest {
   /** The source bundled into `entry`, relative to the repository. */
   source: string;
+  installMethod?: string;
 }
 
 export function parsedManifest(path: string): Record<string, unknown> {
@@ -82,5 +83,6 @@ export function readItemManifest(directory: string, fileName: string): ItemManif
 
 export function readBundleManifest(repositoryRoot: string): BundleManifest {
   const { fields, ...manifest } = readItemManifest(repositoryRoot, MANIFEST_FILE);
-  return { ...manifest, source: sourceOf(fields, repositoryRoot) };
+  const installMethod = typeof fields.installMethod === "string" && fields.installMethod !== "" ? { installMethod: fields.installMethod } : {};
+  return { ...manifest, source: sourceOf(fields, repositoryRoot), ...installMethod };
 }

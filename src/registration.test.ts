@@ -40,7 +40,7 @@ function provenanceAt(installedAt: string): Provenance {
 }
 
 function identityWithCommand() {
-  return { ...fixture.host, commands: [{ name: "thost", target: join(fixture.base, "bin", "thost") }] };
+  return { ...fixture.host, commands: [{ name: "thost", target: join(fixture.base, "bin", "thost"), arguments: [] }] };
 }
 
 function storedProvenance(): unknown {

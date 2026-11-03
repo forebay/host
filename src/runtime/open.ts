@@ -8,6 +8,7 @@ import type {
   ChangesService,
   CommandsService,
   ConfigService,
+  InstallService,
   LogService,
   PathsService,
   PlacesService,
@@ -33,6 +34,7 @@ export interface Runtime {
   registry: RegistryService;
   changes: Pick<ChangesService, "apply" | "reverse">;
   commands: CommandsService;
+  install: Pick<InstallService, "packages" | "plan">;
   close(): void;
 }
 
@@ -71,6 +73,7 @@ export function openRuntime(source: RuntimeSource): Runtime {
     registry: service<RegistryService>("registry"),
     changes: service<ChangesService>("changes"),
     commands: service<CommandsService>("commands"),
+    install: service<InstallService>("install"),
     close: () => library.close(),
   };
 }

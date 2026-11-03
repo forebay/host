@@ -4,5 +4,5 @@ export interface HostIdentity {
   home: string;
   application?: Record<string, unknown>;
   requiresCommand: boolean;
-  commands: ReadonlyArray<{ name: string; target: string }>;
+  commands: ReadonlyArray<{ name: string; target: string; arguments: readonly string[] }>;
 }

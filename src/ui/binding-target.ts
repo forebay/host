@@ -17,7 +17,7 @@ export function deployedManifest(running: RunningHost, plugin: string): PluginMa
 }
 
 /** @implNote Read from the ledger rather than `loaded.started`, which still lists a plugin quarantined after it started. */
-function isActive(running: RunningHost, plugin: string): boolean {
+export function isActive(running: RunningHost, plugin: string): boolean {
   return running.loaded.host.ledger.entry(plugin)?.status === "active";
 }
 

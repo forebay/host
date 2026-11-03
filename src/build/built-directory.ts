@@ -1,8 +1,10 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import type { LoaderApplication } from "../loader/standard.js";
 import { BuildRefusal } from "./build-refusal.js";
 import { parsedManifest, readItemManifest, versionOf } from "./bundle-manifest.js";
 import type { BundleOutput } from "./bundle-plugin.js";
+import { requireLoaderStandard } from "./loader-standard-check.js";
 import { moduleMarkerKey } from "./module-marker.js";
 
 const LIBRARY_MANIFESTS = ["library.json", "package.json"];
@@ -28,11 +30,14 @@ export function pluginDirectoryOutput(directory: string): BundleOutput {
   return { id: manifest.id, version: manifest.version, files: { ...files, "plugin.json": manifest.path } };
 }
 
-/** A host bundle directory: every file in it, its id and version from `host.json`. */
+/** A host bundle directory: every file in it, its id and version from `host.json`, and the `application` of a loader. */
 export function hostDirectoryOutput(directory: string): BundleOutput {
   const root = resolve(directory);
   const manifest = readItemManifest(root, "host.json");
-  return { id: manifest.id, version: manifest.version, files: everyFile(root) };
+  const output: BundleOutput = { id: manifest.id, version: manifest.version, files: everyFile(root) };
+  if (manifest.fields.application === undefined) return output;
+  requireLoaderStandard(manifest.fields, manifest.path);
+  return { ...output, application: manifest.fields.application as LoaderApplication };
 }
 
 /** A library directory for one platform: every file in it, its version from `library.json`, else `package.json`. */

@@ -14,6 +14,7 @@ import type { Catalog } from "../catalog/catalog.js";
 import type { RunningHost } from "../start.js";
 import { callBinding } from "../ui/bindings.js";
 import { BuildRefusal } from "./build-refusal.js";
+import { hostDirectoryOutput } from "./built-directory.js";
 import { bundlePlugin } from "./bundle-plugin.js";
 import type { BundleOutput } from "./bundle-plugin.js";
 import { buildLocalCatalog } from "./local-catalog.js";
@@ -63,6 +64,13 @@ describe("buildLocalCatalog", () => {
     const catalog = readBack(catalogPath);
     expect(catalog.items.greeter?.latest).toBe("1.10.0");
     expect(Object.keys(catalog.items.greeter?.versions ?? {}).sort()).toEqual(["1.10.0", "1.10.0-beta.1", "1.2.0"]);
+  });
+
+  it("lists a plugin as the provider of the install method its manifest names", async () => {
+    const repository = pluginRepository(join(base, "repositories", "provider"), "greeter", { manifest: { installMethod: "fake" } });
+    const output = await bundlePlugin(repository, join(base, "bundled", "provider"));
+    const catalog = readBack(buildLocalCatalog([{ kind: "plugin", output }], join(base, "catalog")));
+    expect(catalog.items.greeter?.installMethod).toBe("fake");
   });
 
   it("lists every copied file with its real hash and size", async () => {
@@ -134,5 +142,45 @@ describe("buildLocalCatalog", () => {
     const output = libraryOutput();
     const refused = { ...output, files: { "lib/../native.node": output.files["lib/native.node"] as string } };
     expect(() => buildLocalCatalog([{ kind: "library", output: refused, platform: "linux-x64" }], join(base, "catalog"))).toThrow(BuildRefusal);
+  });
+});
+
+describe("buildLocalCatalog with a loader standard", () => {
+  const standard = {
+    application: { id: "claude-code", label: "Claude Code", binary: "claude", home: { candidates: ["~/.claude"] }, packages: { npm: "@anthropic-ai/claude-code" } },
+    pathCommands: { requested: ["claude"], minimum: 0 },
+    background: ["forebay-host"],
+  };
+
+  function loaderDirectory(): string {
+    const directory = join(base, "loader");
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "host.js"), "export {};\n");
+    writeFileSync(join(directory, "host.json"), JSON.stringify({ id: "claude-code-loader", version: "1.0.0", entry: "host.js", ...standard }));
+    return directory;
+  }
+
+  it("lists the application of a host.json on its host item", () => {
+    const catalog = readBack(buildLocalCatalog([{ kind: "host", output: hostDirectoryOutput(loaderDirectory()) }], join(base, "catalog")));
+    expect(catalog.items["claude-code-loader"]?.application).toEqual(standard.application);
+  });
+
+  it("lists no application for a host.json that has none", () => {
+    const directory = join(base, "plain");
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "host.json"), JSON.stringify({ id: "plain-host", version: "1.0.0", entry: "host.js" }));
+    const catalog = readBack(buildLocalCatalog([{ kind: "host", output: hostDirectoryOutput(directory) }], join(base, "catalog")));
+    expect(catalog.items["plain-host"]).not.toHaveProperty("application");
+  });
+
+  it("refuses an application on anything but a host", () => {
+    const output = hostDirectoryOutput(loaderDirectory());
+    expect(() => buildLocalCatalog([{ kind: "plugin", output }], join(base, "catalog"))).toThrow(/application/);
+  });
+
+  it("refuses a host.json whose standard is invalid", () => {
+    const directory = loaderDirectory();
+    writeFileSync(join(directory, "host.json"), JSON.stringify({ id: "claude-code-loader", version: "1.0.0", entry: "host.js", ...standard, application: { ...standard.application, binary: "" } }));
+    expect(() => hostDirectoryOutput(directory)).toThrow(/\/application\/binary/);
   });
 });

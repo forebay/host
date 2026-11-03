@@ -1,5 +1,6 @@
 import { copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { LoaderApplication } from "../loader/standard.js";
 import { readBundleManifest } from "./bundle-manifest.js";
 import type { BundleManifest } from "./bundle-manifest.js";
 import { bundleSource, checkImports, writeEntry } from "./esbuild-bundle.js";
@@ -13,6 +14,10 @@ export interface BundleOutput {
   id: string;
   version: string;
   files: Record<string, string>;
+  /** Set for a loader host, whose `host.json` declares the application it loads into. */
+  application?: LoaderApplication;
+  /** Set for a plugin whose manifest names an `installMethod`, so the catalog lists it as that method's provider. */
+  installMethod?: string;
 }
 
 /** @internal A bundle and every module it still imports at run time, as esbuild's metafile lists them. */
@@ -24,7 +29,7 @@ export interface BundledPlugin {
 function writeBundle(manifest: BundleManifest, out: string, built: Built): BundleOutput {
   const files = { ...writeEntry(out, manifest.entry, built), "plugin.json": join(out, "plugin.json") };
   copyFileSync(manifest.path, files["plugin.json"]);
-  return { id: manifest.id, version: manifest.version, files };
+  return { id: manifest.id, version: manifest.version, files, ...(manifest.installMethod === undefined ? {} : { installMethod: manifest.installMethod }) };
 }
 
 /** @internal `bundlePlugin` with the modules left external given, so a test can make one escape; not part of the package entry. */

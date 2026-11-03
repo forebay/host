@@ -1,0 +1,8 @@
+{
+  "id": "broken-install-method",
+  "api": 1,
+  "version": "1.0.0",
+  "entry": "index.js",
+  "installMethod": "broken",
+  "services": { "provides": ["broken-install-method:install-method"] }
+}

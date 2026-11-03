@@ -45,6 +45,21 @@ describe("bundleHost", () => {
     expect(JSON.parse(readFileSync(join(out, "package.json"), "utf8"))).toEqual({ type: "module" });
   });
 
+  it("writes application, pathCommands and background into host.json when given a loader standard", async () => {
+    const out = join(base, "out");
+    const standard = {
+      application: { id: "claude-code", label: "Claude Code", binary: "claude", home: { candidates: ["~/.claude"] }, packages: { npm: "@anthropic-ai/claude-code" } },
+      pathCommands: { requested: ["claude"], minimum: 0 as const },
+      background: ["forebay-host"],
+    };
+    await bundledHost(out, standard);
+    expect(JSON.parse(readFileSync(join(out, "host.json"), "utf8"))).toEqual({ id: "forebay-host", version: PACKAGE_VERSION, entry: "host.js", ...standard });
+  });
+
+  it("refuses a loader standard that checkLoaderStandard refuses", async () => {
+    await expect(bundledHost(join(base, "out"), { application: {}, pathCommands: {}, background: [] } as never)).rejects.toThrow(/\/application\/id/);
+  });
+
   it("contains no esbuild and nothing under src/build, and imports only node builtins", async () => {
     const { inputs, imports } = await bundledHost(join(base, "out"));
     const sources = inputs.map(withSlashes);
