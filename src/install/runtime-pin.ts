@@ -51,3 +51,6 @@ export const RUNTIME_PIN: PinnedRuntime = {
     },
   },
 };
+
+/** The lowest major version of {@link RUNTIME_PIN}'s runtime that the installer uses from the PATH instead of acquiring the pin, matching `engines.node`. */
+export const COMPATIBLE_RUNTIME_MAJOR = 20;
