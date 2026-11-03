@@ -17,6 +17,7 @@ import { openRuntime, siblingRuntime } from "./runtime/open.js";
 import { startHost, startHostWith } from "./start.js";
 import { callBinding } from "./ui/bindings.js";
 import { checkCatalog } from "./updates/check.js";
+import { sweepCache } from "./updates/sweep.js";
 import type { CatalogTransport } from "./updates/check.js";
 import type { HostOptions, RunningHost } from "./start.js";
 
@@ -279,7 +280,7 @@ describe("a host started from a catalog", () => {
     const { host, fetcher } = await startedFrom(catalog, transport);
     expect(host.status().active).toEqual(["a"]);
     await finished(host);
-    expect(host.status().updates).toEqual({ checked: [{ kind: "skipped" }], fetched: [], refused: [], finished: true });
+    expect(host.status().updates).toEqual({ checked: [{ kind: "skipped" }], fetched: [], refused: [], interrupted: false, finished: true });
     expect(transport.calls).toBe(0);
     expect(fetcher.urls).toEqual([]);
   });
@@ -330,12 +331,44 @@ describe("a host started from a catalog", () => {
     expect(second.host.status().bundleProblems).toEqual([]);
   });
 
+  async function switchedOnNextStart(installed: string, catalog: ServedCatalog, expected: string, betweenStarts: () => void = () => {}): Promise<void> {
+    await preinstalled(catalog, installed);
+    const first = await startedFrom(catalog, answering(catalog));
+    await finished(first.host);
+    expect(first.host.status().updates?.fetched).toEqual([`a@${expected}`]);
+    await first.host.stop();
+    betweenStarts();
+    const second = await startedFrom(catalog, answering(catalog));
+    expect(second.host.bundles.locate("a")?.version).toBe(expected);
+    expect(second.host.status().active).toEqual(["a"]);
+  }
+
+  it("runs a pin older than the installed version on the next start", async () => {
+    writeSettings([
+      { key: "plugins.a.enabled", value: true, layer: "portable" },
+      { key: "plugins.a.pin", value: "1.0.0", layer: "portable" },
+    ]);
+    await switchedOnNextStart("2.0.0", served(["1.0.0", "2.0.0"], "2.0.0"), "1.0.0");
+  });
+
+  it("runs a lowered latest on the next start", async () => {
+    enable("a");
+    await switchedOnNextStart("2.0.0", served(["1.0.0", "2.0.0"], "1.0.0"), "1.0.0");
+  });
+
+  it("keeps a version fetched for the next start through another host's sweep in between", async () => {
+    enable("a");
+    await switchedOnNextStart("2.0.0", served(["1.0.0", "2.0.0"], "1.0.0"), "1.0.0", () => {
+      sweepCache(environment.SPISOR_CACHE, environment.SPISOR_STATE);
+    });
+  });
+
   it("records the versions it runs as this host's references", async () => {
     enable("a");
     const catalog = served(["1.0.0"], "1.0.0");
     await preinstalled(catalog, "1.0.0");
     await startedFrom(catalog, answering(catalog));
-    expect(JSON.parse(readFileSync(join(environment.SPISOR_STATE, "bundles", "test-host.json"), "utf8"))).toEqual({ a: "1.0.0" });
+    expect(JSON.parse(readFileSync(join(environment.SPISOR_STATE, "bundles", "test-host.json"), "utf8"))).toEqual({ run: { a: "1.0.0" }, next: {} });
   });
 
   it("stops while an update check is still waiting on the network", async () => {

@@ -22,6 +22,10 @@ describe("the package entry", () => {
     expect(Object.keys(entry)).not.toContain("runReconcileWorker");
     expect(Object.keys(entry)).not.toContain("fetcherWith");
     expect(Object.keys(entry)).not.toContain("storeFileWith");
+    expect(Object.keys(entry)).not.toContain("catalogTransportWith");
+    for (const internal of ["checkCatalog", "catalogStatePath", "currentCatalog", "resolveVersions", "recordReferences", "readReferences", "sweepCache", "installedVersions", "compareVersions", "newestVersion", "startUpdates"]) {
+      expect(Object.keys(entry)).not.toContain(internal);
+    }
     expect([startTakesOnlyOptions, reconcileTakesNoWorkerEntry, seamIsUnreachable, fetcherTakesNothing, storeTakesNoSeams]).toEqual([true, true, undefined, true, true]);
   });
 });

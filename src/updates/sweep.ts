@@ -7,8 +7,8 @@ import { newestVersion } from "./semver.js";
 
 function referencedVersions(state: string): Set<string> {
   const referenced = new Set<string>();
-  for (const versions of readReferences(state)) {
-    for (const [id, version] of Object.entries(versions)) referenced.add(`${id}@${version}`);
+  for (const { run, next } of readReferences(state)) {
+    for (const [id, version] of [...Object.entries(run), ...Object.entries(next)]) referenced.add(`${id}@${version}`);
   }
   return referenced;
 }
@@ -32,8 +32,8 @@ function removeVersion(root: string, id: string, version: string): boolean {
 }
 
 /**
- * Deletes every installed bundle version no host's reference file names, keeping each id's newest
- * installed version as the rollback.
+ * Deletes every installed bundle version no host's reference file names, as run or as scheduled for
+ * its next start, keeping each id's newest installed version as the rollback.
  *
  * @remarks A version with no completion marker is left alone, since another host sharing the cache
  * may be installing it right now. A version that cannot be removed (a file another process holds

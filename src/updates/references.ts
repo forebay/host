@@ -6,6 +6,12 @@ import { isRecord } from "../plugins/is-record.js";
 
 const REFERENCE_EXTENSION = ".json";
 
+/** The bundle versions one host holds: what it runs now, and what it scheduled for its next start. */
+export interface HostReferences {
+  run: Record<string, string>;
+  next: Record<string, string>;
+}
+
 function referencesFolder(state: string): string {
   return resolve(state, "bundles");
 }
@@ -19,10 +25,14 @@ function referenceFile(state: string, hostId: string): string {
   return file;
 }
 
-function versionsOf(text: string): Record<string, string> | undefined {
+function isVersionMap(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((version) => typeof version === "string");
+}
+
+function referencesOf(text: string): HostReferences | undefined {
   try {
     const value: unknown = JSON.parse(text);
-    return isRecord(value) && Object.values(value).every((version) => typeof version === "string") ? (value as Record<string, string>) : undefined;
+    return isRecord(value) && isVersionMap(value.run) && isVersionMap(value.next) ? { run: value.run, next: value.next } : undefined;
   } catch {
     return undefined;
   }
@@ -45,28 +55,29 @@ function referenceNames(folder: string): string[] {
 }
 
 /**
- * Records which bundle versions this host runs, so a sweep from any host sharing the cache keeps them.
+ * Records which bundle versions this host runs and which it fetches for its next start, so a sweep
+ * from any host sharing the cache keeps both.
  *
  * @implNote Written beside its name and renamed, so a sweep never reads a half-written file and takes it for none.
  */
-export function recordReferences(state: string, hostId: string, run: Record<string, string>): void {
+export function recordReferences(state: string, hostId: string, references: HostReferences): void {
   const file = referenceFile(state, hostId);
   mkdirSync(referencesFolder(state), { recursive: true });
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
-    writeFileSync(temporary, `${JSON.stringify(run, null, 2)}\n`);
+    writeFileSync(temporary, `${JSON.stringify({ run: references.run, next: references.next }, null, 2)}\n`);
     renameSync(temporary, file);
   } finally {
     rmSync(temporary, { force: true });
   }
 }
 
-/** Every host's recorded versions, ordered by host; a file that is not a map of versions is skipped. */
-export function readReferences(state: string): Array<Record<string, string>> {
+/** Every host's recorded versions, ordered by host; a file that is not two maps of versions is skipped. */
+export function readReferences(state: string): HostReferences[] {
   const folder = referencesFolder(state);
   return referenceNames(folder).flatMap((name) => {
     const text = readIfFile(join(folder, name));
-    const versions = text === undefined ? undefined : versionsOf(text);
-    return versions === undefined ? [] : [versions];
+    const references = text === undefined ? undefined : referencesOf(text);
+    return references === undefined ? [] : [references];
   });
 }

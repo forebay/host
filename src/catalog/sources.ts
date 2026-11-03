@@ -17,7 +17,6 @@ export interface MergedCatalog {
   shadowed: Array<{ id: string; source: CatalogSource }>;
 }
 
-const SETTING = "catalog.sources";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -30,8 +29,9 @@ function sourceOf(entry: unknown): CatalogSource | string {
   return `unknown or incomplete catalog source kind ${JSON.stringify(entry.kind)}`;
 }
 
+/** The sources `catalog.sources` names in the merged settings, which nest a dotted key. */
 export function readCatalogSources(settings: Record<string, unknown>): CatalogSourceReading {
-  const configured = settings[SETTING];
+  const configured = isRecord(settings.catalog) ? settings.catalog.sources : undefined;
   const entries = Array.isArray(configured) ? configured : [];
   const reading: CatalogSourceReading = { sources: [], skipped: [] };
   entries.forEach((entry, index) => {

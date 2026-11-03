@@ -35,12 +35,12 @@ describe("catalogStart", () => {
     }
     const settings = { plugins: { a: { enabled: true }, d: { pin: "1.0.0" } } };
     catalogStart({ sources: [] }, places, "test-host", settings, { "demo:greeting": "d" });
-    expect(references()).toEqual({ a: "2.0.0", d: "1.0.0" });
+    expect(references()).toEqual({ run: { a: "2.0.0", d: "1.0.0" }, next: {} });
   });
 
   it("leaves out a default the settings disable", () => {
     installed("d", "1.0.0");
     catalogStart({ sources: [] }, places, "test-host", { plugins: { d: { enabled: false } } }, { "demo:greeting": "d" });
-    expect(references()).toEqual({});
+    expect(references()).toEqual({ run: {}, next: {} });
   });
 });
