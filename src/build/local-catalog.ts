@@ -31,6 +31,9 @@ function isInstallMarker(key: string): boolean {
 
 function checkInput(input: CatalogInput): void {
   const { id, version, files } = input.output;
+  if (input.output.application !== undefined && input.kind !== "host") {
+    throw new BuildRefusal(`${labelOf(input)} declares an application, which only a host may`, "give the application to a host, or remove it from this build");
+  }
   if (!acceptsItemId(id)) throw new BuildRefusal(`${JSON.stringify(id)} is not an id a catalog accepts`, "use lowercase letters and digits joined by single hyphens");
   if (!acceptsVersion(version)) throw new BuildRefusal(`${id} has the version ${JSON.stringify(version)}, which a catalog refuses`, "use a semver version such as 1.0.0, with no trailing dot");
   if (input.platform !== undefined && !isPlatformKey(input.platform)) {
@@ -98,6 +101,7 @@ function addFiles(version: CatalogVersion, input: CatalogInput, files: Record<st
 
 function itemFor(items: Catalog["items"], input: CatalogInput): CatalogItem {
   const item = items[input.output.id] ?? { kind: input.kind, versions: {}, latest: input.output.version };
+  if (input.output.application !== undefined) item.application = input.output.application;
   items[input.output.id] = item;
   return item;
 }

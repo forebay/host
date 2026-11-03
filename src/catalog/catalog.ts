@@ -1,3 +1,4 @@
+import type { LoaderApplication } from "../loader/standard.js";
 import { foldedDuplicate } from "./folded-keys.js";
 import { validateCatalogIndex } from "./schema.generated.js";
 import { resolveWithinOrigin } from "./urls.js";
@@ -18,6 +19,7 @@ export interface CatalogItem {
   kind: "plugin" | "host" | "library";
   versions: Record<string, CatalogVersion>;
   latest: string;
+  application?: LoaderApplication;
 }
 
 export interface Catalog {
@@ -39,6 +41,7 @@ const SCHEMA_FIXES: Record<string, string> = {
   type: "give the member the type the schema requires",
   minimum: "use a value of at least the schema's minimum",
   minLength: "give the member a non-empty value",
+  not: "remove the member, which this kind of item may not carry; only a host item may have an application",
 };
 
 const NEITHER_FILES_NOR_PLATFORMS_FIX = "list files, platforms, or both";

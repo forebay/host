@@ -43,6 +43,31 @@ describe("readCatalog", () => {
     expect(catalog.items.b?.kind).toBe("host");
   });
 
+  describe("application", () => {
+    const application = {
+      id: "claude-code",
+      label: "Claude Code",
+      binary: "claude",
+      home: { candidates: ["~/.claude"] },
+      packages: { npm: "@anthropic-ai/claude-code" },
+    };
+    const hostItem = { kind: "host", latest: "1.0.0", versions: pluginItem.versions, application };
+
+    it("reads an application on a host item", () => {
+      expect(catalogOf(index(hostItem)).items.thing?.application).toEqual(application);
+    });
+
+    it("refuses an application on a plugin item", () => {
+      const refusal = refusalOf(index({ ...hostItem, kind: "plugin" }));
+      expect(refusal.path).toContain("/items/thing");
+    });
+
+    it("refuses an application with no binary, naming its path", () => {
+      const { binary: _binary, ...withoutBinary } = application;
+      expect(refusalOf(index({ ...hostItem, application: withoutBinary })).path).toBe("/items/thing/application/binary");
+    });
+  });
+
   it("refuses a file key with a .. segment, naming its path", () => {
     const refusal = refusalOf(index(withFiles({ "a/../b.js": file("x") })));
     expect(refusal.path).toContain("/items/thing/versions/1.0.0/files");

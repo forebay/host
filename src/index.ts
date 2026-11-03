@@ -49,3 +49,5 @@ export type { HostCatalog } from "./updates/catalog-start.js";
 export type { UpdateProgress } from "./updates/background.js";
 export { bootFromCache, hostLibraryReferences } from "./install/boot-from-cache.js";
 export type { CacheBoot, HostLibraries, HostReferences, LibraryResolution } from "./install/boot-from-cache.js";
+export { checkLoaderStandard } from "./loader/standard.js";
+export type { LoaderApplication, LoaderStandard, LoaderStandardIssue, PackageMapping } from "./loader/standard.js";

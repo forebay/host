@@ -1,5 +1,6 @@
 import { copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { LoaderApplication } from "../loader/standard.js";
 import { readBundleManifest } from "./bundle-manifest.js";
 import type { BundleManifest } from "./bundle-manifest.js";
 import { bundleSource, checkImports, writeEntry } from "./esbuild-bundle.js";
@@ -13,6 +14,8 @@ export interface BundleOutput {
   id: string;
   version: string;
   files: Record<string, string>;
+  /** Set for a loader host, whose `host.json` declares the application it loads into. */
+  application?: LoaderApplication;
 }
 
 /** @internal A bundle and every module it still imports at run time, as esbuild's metafile lists them. */
