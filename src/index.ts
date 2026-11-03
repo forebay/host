@@ -51,3 +51,6 @@ export { bootFromCache, hostLibraryReferences } from "./install/boot-from-cache.
 export type { CacheBoot, HostLibraries, HostReferences, LibraryResolution } from "./install/boot-from-cache.js";
 export { checkLoaderStandard } from "./loader/standard.js";
 export type { LoaderApplication, LoaderStandard, LoaderStandardIssue, PackageMapping } from "./loader/standard.js";
+export { resolveApplicationHome } from "./loader/home.js";
+export type { ApplicationHome } from "./loader/home.js";
+export { HomeRefusal } from "./loader/home-refusal.js";
