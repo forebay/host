@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { startFixtureHost } from "../__fixtures__/running-host.js";
 import type { FixtureHost } from "../__fixtures__/running-host.js";
+import type { RunningHost } from "../start.js";
 import { detectThroughMethods } from "./detect.js";
 import { operate } from "./operate.js";
 import { installMethodProviders } from "./providers.js";
@@ -109,6 +110,29 @@ describe("install-method providers", () => {
     expect(detections).toHaveLength(2);
     expect(detections.filter((detection) => "refused" in detection)).toEqual([
       { method: "fake", item: ITEM, refused: expect.stringContaining(`${second?.plugin} is shadowed by ${first?.plugin}`) },
+    ]);
+  });
+
+  it("does not treat a plugin that provides another plugin's install-method id as a provider", () => {
+    const manifest = (id: string, provides: string[]) => ({ manifest: { id, installMethod: "npm", services: { provides } } });
+    const stub = {
+      loaded: {
+        deployed: [manifest("impostor", ["other:install-method"]), manifest("bare", ["install-method"]), manifest("honest", ["honest:install-method"])],
+        host: { ledger: { entry: () => ({ status: "active" }) } },
+      },
+    } as unknown as RunningHost;
+
+    expect(installMethodProviders(stub).map((provider) => provider.plugin)).toEqual(["honest"]);
+  });
+
+  it("lets a working second provider serve a method whose first provider was quarantined", async () => {
+    const { running } = await started(["aaa-failing-install-method", "fake-install-method"]);
+
+    expect(running.loaded.host.ledger.entry("aaa-failing-install-method")?.status).not.toBe("active");
+    expect(installMethodProviders(running)).toEqual([expect.objectContaining({ plugin: "fake-install-method" })]);
+    expect(await operate(running, "fake", "install", "left-pad")).toEqual({ ok: true });
+    expect(await detectThroughMethods(running, ITEM, { fake: "left-pad" })).toEqual([
+      { method: "fake", item: ITEM, package: "left-pad", answer: { installed: true, version: "1.0.0" } },
     ]);
   });
 });
