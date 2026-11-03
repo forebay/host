@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -272,6 +272,24 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
     expect(await later.exit).toBe(0);
     sweepCache(installed().places.cache, state());
     expect(existsSync(join(bundles, "1.0.0"))).toBe(false);
+    expect(existsSync(join(bundles, "2.0.0"))).toBe(true);
+  });
+
+  it("keeps the version a launch switched to when a later hook records the loader, so a sweep never deletes what launch runs", async () => {
+    const bundles = join(installed().places.cache, "bundles", LOADER_ID);
+    cpSync(join(bundles, "1.0.0"), join(bundles, "2.0.0"), { recursive: true });
+    recordReferences(state(), LOADER_ID, { run: { [LOADER_ID]: "1.0.0" }, next: { [LOADER_ID]: "2.0.0" } });
+    const switching = launch(["switched", "0"]);
+    await applicationStarted("switched");
+    releaseFakeApplication(signals, "switched");
+    expect(await switching.exit).toBe(0);
+
+    const hook = spawnSync(process.execPath, [bootEntryFile(installed().places.cache), "forebay-host", "hook", LOADER_ID, "session-start"], { cwd: tmpdir(), env: launcherEnvironment(join(base, "bin")), encoding: "utf8", timeout: START_TIMEOUT });
+    expect({ status: hook.status, stdout: hook.stdout, stderr: hook.stderr }).toEqual({ status: 0, stdout: "", stderr: "" });
+
+    expect(readHostReferences(state(), LOADER_ID).run[LOADER_ID]).toBe("2.0.0");
+    expect(registeredVersion(LOADER_ID)).toBe("2.0.0");
+    sweepCache(installed().places.cache, state());
     expect(existsSync(join(bundles, "2.0.0"))).toBe(true);
   });
 

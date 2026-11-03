@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -13,7 +13,10 @@ import { BACKGROUND_ID, installLaunchEcosystem, launchCatalog, LOADER_ID, SESSIO
 import type { LaunchEcosystem } from "../../__fixtures__/launch-ecosystem.js";
 import { openCodeEntry } from "../../entries/opencode.js";
 import { isProcessAlive, readHolders } from "../../processes/holders.js";
-import { readHostReferences, removeHostReferences } from "../../updates/references.js";
+import { REPOSITORY_ROOT } from "../../__fixtures__/context.js";
+import { openRuntime, siblingRuntime } from "../../runtime/open.js";
+import { readHostReferences, recordReferences, removeHostReferences } from "../../updates/references.js";
+import { sweepCache } from "../../updates/sweep.js";
 
 const COUNTER_PLUGIN = "counter";
 const ACTIVATIONS_VARIABLE = "SPISOR_FIXTURE_ACTIVATIONS";
@@ -34,6 +37,15 @@ function environment(): Record<string, string> {
 function runHook(loaderId: string, event: string): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync(process.execPath, [bootEntryFile(ecosystem.places.cache), "forebay-host", "hook", loaderId, event], { cwd: tmpdir(), env: environment(), encoding: "utf8", timeout: START_TIMEOUT });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+function registeredVersion(id: string): unknown {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    return runtime.registry.get({ places: ecosystem.places, id }).registration?.version;
+  } finally {
+    runtime.close();
+  }
 }
 
 function activatingPids(): number[] {
@@ -123,6 +135,21 @@ describe("forebay-host hook, through the boot entry and the real host bundle", (
     expect(readHolders(ecosystem.places.state, BACKGROUND_ID).pid).toBeNull();
   });
 
+  it("registers and records the loader version a start would run, keeping the one it switched from for rollback through a sweep", () => {
+    const { cache, state } = ecosystem.places;
+    const bundles = join(cache, "bundles", LOADER_ID);
+    cpSync(join(bundles, "1.0.0"), join(bundles, "2.0.0"), { recursive: true });
+    recordReferences(state, LOADER_ID, { run: { [LOADER_ID]: "1.0.0" }, next: { [LOADER_ID]: "2.0.0" } });
+
+    expect(runHook(LOADER_ID, "session-start")).toEqual({ status: 0, stdout: "", stderr: "" });
+
+    expect(readHostReferences(state, LOADER_ID)).toEqual({ run: { [LOADER_ID]: "2.0.0" }, next: {}, rollback: { [LOADER_ID]: "1.0.0" } });
+    expect(registeredVersion(LOADER_ID)).toBe("2.0.0");
+    sweepCache(cache, state);
+    expect(existsSync(join(bundles, "2.0.0"))).toBe(true);
+    expect(existsSync(join(bundles, "1.0.0"))).toBe(true);
+  });
+
   it("writes a refusal and its fix to stderr and still exits 0, so the application always starts", () => {
     const unknownEvent = runHook(LOADER_ID, "session-end");
     const unregistered = runHook("absent-loader", "session-start");
@@ -138,7 +165,7 @@ describe("forebay-host hook, through the boot entry and the real host bundle", (
 });
 
 describe("the OpenCode entry, run under Node", () => {
-  it("starts the loader's host with its session plugins inside the process that loads it, returning its hooks at once", async () => {
+  it("starts the loader's host with its session plugins inside the process that loads it, returning its hooks at once and writing nothing else on stdout", async () => {
     const child = spawn(process.execPath, [openCodeRunner()], { cwd: tmpdir(), env: environment(), stdio: ["ignore", "pipe", "pipe"] });
     started.push(child);
     let stdout = "";
@@ -156,7 +183,9 @@ describe("the OpenCode entry, run under Node", () => {
       "the background host being held",
     );
 
-    expect(stdout).toBe("{}");
+    await new Promise((resolve) => setTimeout(resolve, INTERVAL * 2));
+
     expect(background.holders).toEqual([child.pid]);
+    expect(stdout).toBe("{}");
   });
 });
