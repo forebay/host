@@ -61,10 +61,10 @@ export interface ChangesService {
 export const Changes: ServiceType<ChangesService> = { id: "changes" };
 
 export interface CommandsService {
-  request(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; [key: string]: unknown }): { name?: string };
+  request(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; arguments?: string[]; [key: string]: unknown }): { name?: string };
   rename(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; from: string; to: string; [key: string]: unknown }): { name: string };
   delete(argument: { places: { state: string; [key: string]: unknown }; host: string; name: string; [key: string]: unknown }): { deleted: true };
-  add(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; [key: string]: unknown }): { name: string };
+  add(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; arguments?: string[]; [key: string]: unknown }): { name: string };
 }
 
 export const Commands: ServiceType<CommandsService> = { id: "commands" };
