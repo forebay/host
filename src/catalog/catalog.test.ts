@@ -94,11 +94,11 @@ describe("readCatalog", () => {
     expect(readCatalog(index({ ...pluginItem, latest: "constructor" }), ORIGIN).ok).toBe(false);
   });
 
-  it.each(["..", "constructor", "Upper", "a--b", "con", "__proto__", "-a"])("refuses the item id %s", (id) => {
+  it.each(["..", "Upper", "a--b", "con", "__proto__", "-a"])("refuses the item id %s", (id) => {
     expect(readCatalog(index(pluginItem, id), ORIGIN).ok).toBe(false);
   });
 
-  it.each(["..", "1.0", "1.0.0..1", "v1.0.0", "constructor", "1.0.0/../x"])("refuses the version %s", (version) => {
+  it.each(["..", "1.0", "1.0.0..1", "v1.0.0", "constructor", "1.0.0/../x", "1.0.0-rc.", "1.0.0+build."])("refuses the version %s", (version) => {
     const item = { ...pluginItem, latest: version, versions: { [version]: { files: { "p.js": file("p") } } } };
     expect(readCatalog(index(item), ORIGIN).ok).toBe(false);
   });
@@ -143,6 +143,16 @@ describe("readCatalog", () => {
 
   it("refuses an absolute file url outside the index's directory", () => {
     expect(readCatalog(index(withFiles({ "p.js": file("file:///C:/other/x.js") })), "file:///C:/builds/index.json").ok).toBe(false);
+  });
+
+  it("refuses a percent-encoded climb out of a file origin's directory", () => {
+    expect(readCatalog(index(withFiles({ "p.js": file("%2e%2e/x.js") })), "file:///C:/builds/out/index.json").ok).toBe(false);
+    expect(readCatalog(index(withFiles({ "p.js": file("%2e%2e/%2e%2e/x.js") })), "file:///C:/builds/out/index.json").ok).toBe(false);
+  });
+
+  it("does not take a sibling directory sharing the index directory's name as a prefix", () => {
+    expect(readCatalog(index(withFiles({ "p.js": file("file:///a/bc/x") })), "file:///a/b/index.json").ok).toBe(false);
+    expect(readCatalog(index(withFiles({ "p.js": file("file:///a/b/x") })), "file:///a/b/index.json").ok).toBe(true);
   });
 
   it("refuses a UNC file url", () => {
