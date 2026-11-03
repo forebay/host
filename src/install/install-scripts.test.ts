@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { accessSync, chmodSync, constants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -213,7 +213,24 @@ const HOSTILE_CATALOGS: HostileCatalog[] = [
   { name: "a file key that climbs out of the bundle", change: (files) => void (files["../escape.js"] = { ...(files["host.json"] as { url: string; sha256: string; size: number }) }) },
   { name: "a file url outside the catalog's directory", change: (files) => void ((files["host.js"] as { url: string }).url = "../outside/host.js") },
   { name: "a file whose bytes do not have the listed hash", change: (files) => void ((files["host.js"] as { sha256: string }).sha256 = "0".repeat(64)) },
+  { name: "a file that cannot be fetched", change: (files) => void ((files["host.js"] as { url: string }).url = "not-served/host.js") },
+  { name: "a file served cut short", change: (files) => void ((files["host.js"] as { url: string }).url = servedCutShort("host.js")) },
 ];
+
+/** A copy of the catalog's `key` holding only its first half, served from beside the index, answering its relative url. */
+function servedCutShort(key: string): string {
+  const whole = readFileSync(join(dirname(catalog.path), "files", "forebay-host", catalog.hostVersion, key));
+  const relative = `cut-short/${key}`;
+  mkdirSync(join(dirname(catalog.path), "cut-short"), { recursive: true });
+  writeFileSync(join(dirname(catalog.path), relative), whole.subarray(0, Math.floor(whole.length / 2)));
+  return relative;
+}
+
+const BUNDLE_FILE_NAMES = new Set(["host.js", "reconcile-worker.js", "host.json", "package.json", ".installed.json"]);
+
+function strayFiles(directory: string): string[] {
+  return existsSync(directory) ? readdirSync(directory).filter((name) => !BUNDLE_FILE_NAMES.has(name)) : [];
+}
 
 /** Writes a copy of the catalog index beside it, so its relative urls still resolve, with the forebay-host files changed by `hostile`. */
 function hostileCatalog(hostile: HostileCatalog, index: number): string {
@@ -317,6 +334,7 @@ describe(`install.${SCRIPT_KIND} on this machine`, () => {
     expect(existsSync(ran)).toBe(false);
     expect(existsSync(join(cache(), "libraries"))).toBe(false);
     expect(existsSync(join(cache(), "bundles", "forebay-host", "escape.js"))).toBe(false);
+    expect(strayFiles(hostDirectory())).toEqual([]);
   }, SCRIPT_TIMEOUT);
 
   it.skipIf(IS_WINDOWS)("names curl as the one thing to install when it is missing", async () => {

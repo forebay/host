@@ -162,17 +162,27 @@ compatible_runtime() {
   NODE=$(command -v "$RUNTIME_NAME")
 }
 
+remove_temporary() {
+  [ -z "$TEMPORARY" ] || rm -f "$TEMPORARY"
+  TEMPORARY=''
+}
+
+new_temporary() {
+  TEMPORARY=$(mktemp "$1.XXXXXX")
+}
+
+place_temporary() {
+  mv -f "$TEMPORARY" "$1"
+  TEMPORARY=''
+}
+
 fetch_verified() {
-  part=$(mktemp "$2.XXXXXX")
-  if ! curl -fsSL -o "$part" "$1"; then
-    rm -f "$part"
-    refuse "could not fetch $1" 'check the network connection, then run this again'
-  fi
-  if [ "$(file_size "$part")" != "$4" ] && [ "$4" != any ] || ! has_sha256 "$part" "$3"; then
-    rm -f "$part"
+  new_temporary "$2"
+  curl -fsSL -o "$TEMPORARY" "$1" || refuse "could not fetch $1" 'check the network connection, then run this again'
+  if [ "$(file_size "$TEMPORARY")" != "$4" ] && [ "$4" != any ] || ! has_sha256 "$TEMPORARY" "$3"; then
     refuse "$1 does not have the SHA-256 $3 it is pinned to" 'run this again; if it repeats, the download is being altered on the way'
   fi
-  mv -f "$part" "$2"
+  place_temporary "$2"
 }
 
 acquire_runtime() {
@@ -232,11 +242,16 @@ fetch_host() {
 $files
 EOF
   if [ "$changed" = yes ] || [ ! -f "$HOST_DIRECTORY/$INSTALL_MARKER" ]; then
-    marker_part=$(mktemp "$HOST_DIRECTORY/$INSTALL_MARKER.XXXXXX")
-    printf '{"files":{%s}}\n' "$hashes" > "$marker_part"
-    mv -f "$marker_part" "$HOST_DIRECTORY/$INSTALL_MARKER"
+    new_temporary "$HOST_DIRECTORY/$INSTALL_MARKER"
+    printf '{"files":{%s}}\n' "$hashes" > "$TEMPORARY"
+    place_temporary "$HOST_DIRECTORY/$INSTALL_MARKER"
   fi
 }
+
+TEMPORARY=''
+trap remove_temporary EXIT
+trap 'remove_temporary; exit 130' INT
+trap 'remove_temporary; exit 143' TERM
 
 [ "$#" -ge 1 ] || refuse 'no catalog was given, and none is published yet' 'pass the catalog to install from: sh install.sh <path or https url of catalog.json>'
 CATALOG=$1
