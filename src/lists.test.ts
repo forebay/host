@@ -1,7 +1,12 @@
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createFixture } from "./__fixtures__/context.js";
+import type { Catalog } from "./catalog/catalog.js";
 import { startFixtureHost } from "./__fixtures__/running-host.js";
 import type { FixtureHost } from "./__fixtures__/running-host.js";
-import { pluginList, presentItems, renderPluginList, threeStateList } from "./lists.js";
+import { applicationList, pluginList, presentItems, renderPluginList, threeStateList } from "./lists.js";
 
 let fixture: FixtureHost | undefined;
 
@@ -100,5 +105,53 @@ describe("renderPluginList", () => {
   it("shows the same plugin as available when no detector finds it", async () => {
     const { items } = await plugins(false);
     expect(items.find((row) => row.id === "greeter")).toMatchObject({ state: "available", unavailable: true, install: true });
+  });
+});
+
+describe("applicationList", () => {
+  const applicationOf = (id: string, binary: string) => ({ id, label: `${id} label`, binary, home: { candidates: ["~/.x"] }, packages: {} });
+  const catalog = {
+    format: 1,
+    items: {
+      "claude-host": { kind: "host", versions: {}, latest: "1.0.0", application: applicationOf("claude", "claude") },
+      "opencode-host": { kind: "host", versions: {}, latest: "1.0.0", application: applicationOf("opencode", "opencode") },
+      "gemini-host": { kind: "host", versions: {}, latest: "1.0.0", application: applicationOf("gemini", "gemini") },
+      "some-plugin": { kind: "plugin", versions: {}, latest: "1.0.0" },
+    },
+  } as unknown as Catalog;
+  const provenance = { method: "test", version: "1.0.0", location: join(tmpdir(), "x"), os: "linux", architecture: "x64", installedAt: "2026-01-01T00:00:00Z" };
+
+  it("lists installed from the registry, detected from PATH or a method, and the rest as available", () => {
+    const context = createFixture();
+    try {
+      context.runtime.registry.register({
+        places: context.places,
+        registration: { id: "claude-host", kind: "host", version: "1.0.0", application: applicationOf("claude", "claude"), provenance, requiresCommand: false },
+      });
+      const binDirectory = join(context.base, "bin");
+      mkdirSync(binDirectory);
+      writeFileSync(join(binDirectory, "opencode.cmd"), "");
+      chmodSync(join(binDirectory, "opencode.cmd"), 0o755);
+      const environment = { PATH: binDirectory, PATHEXT: ".CMD" };
+      const rows = applicationList(context.runtime, catalog, context.places, environment, [], "win32");
+      expect(rows).toEqual([
+        { id: "claude", label: "claude label", state: "installed" },
+        { id: "opencode", label: "opencode label", state: "detected" },
+        { id: "gemini", label: "gemini label", state: "available" },
+      ]);
+    } finally {
+      context.dispose();
+    }
+  });
+
+  it("lists an application detected when a method reports its package installed", () => {
+    const context = createFixture();
+    try {
+      const providers = [{ method: "npm", item: "gemini", package: "@x/gemini", answer: { installed: true } }];
+      const rows = applicationList(context.runtime, catalog, context.places, { PATH: "" }, providers, "linux");
+      expect(rows.find(({ id }) => id === "gemini")?.state).toBe("detected");
+    } finally {
+      context.dispose();
+    }
   });
 });

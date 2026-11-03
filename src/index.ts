@@ -30,7 +30,7 @@ export { bindingTarget } from "./ui/binding-target.js";
 export type { BindingTarget } from "./ui/binding-target.js";
 export { renderEntry, renderHeadless, renderHeadlessSettings } from "./ui/headless.js";
 export type { HeadlessNode, HeadlessNodeError, HeadlessScreen, HostScreen, PluginScreen } from "./ui/headless.js";
-export { pluginList, presentItems, renderPluginList, threeStateList } from "./lists.js";
+export { applicationList, pluginList, presentItems, renderPluginList, threeStateList } from "./lists.js";
 export type { Detector, PresentedItem } from "./lists.js";
 export { readCatalog } from "./catalog/catalog.js";
 export type { Catalog, CatalogItem, CatalogReading, CatalogRefusal, CatalogVersion, FileRef } from "./catalog/catalog.js";
@@ -54,3 +54,6 @@ export type { LoaderApplication, LoaderStandard, LoaderStandardIssue, PackageMap
 export { resolveApplicationHome } from "./loader/home.js";
 export type { ApplicationHome } from "./loader/home.js";
 export { HomeRefusal } from "./loader/home-refusal.js";
+export { findOnPath } from "./loader/on-path.js";
+export { detectApplication } from "./loader/detect-application.js";
+export type { MethodDetection } from "./methods/detection.js";
