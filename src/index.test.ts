@@ -6,16 +6,22 @@ import * as entry from "./index.js";
 
 type StartParameters = Parameters<typeof entry.startHost>;
 type TakesOnlyOptions = [HostOptions] extends StartParameters ? (StartParameters extends [HostOptions] ? true : false) : false;
+type FetcherParameters = Parameters<typeof entry.defaultFetcher>;
+type StoreParameters = Parameters<typeof entry.storeFile>;
 type ReconcileParameters = Parameters<typeof entry.reconcileSecretsInBackground>;
 
 const startTakesOnlyOptions: TakesOnlyOptions = true;
 const reconcileTakesNoWorkerEntry: ReconcileParameters[2] extends URL | undefined ? (URL extends ReconcileParameters[2] ? false : true) : true = true;
+const fetcherTakesNothing: FetcherParameters extends [] ? true : false = true;
+const storeTakesNoSeams: StoreParameters["length"] extends 3 ? true : false = true;
 const seamIsUnreachable: HostEngine | undefined = undefined;
 
 describe("the package entry", () => {
   it("carries no test seam", () => {
     expect(Object.keys(entry)).not.toContain("startHostWith");
     expect(Object.keys(entry)).not.toContain("runReconcileWorker");
-    expect([startTakesOnlyOptions, reconcileTakesNoWorkerEntry, seamIsUnreachable]).toEqual([true, true, undefined]);
+    expect(Object.keys(entry)).not.toContain("fetcherWith");
+    expect(Object.keys(entry)).not.toContain("storeFileWith");
+    expect([startTakesOnlyOptions, reconcileTakesNoWorkerEntry, seamIsUnreachable, fetcherTakesNothing, storeTakesNoSeams]).toEqual([true, true, undefined, true, true]);
   });
 });

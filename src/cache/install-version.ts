@@ -1,9 +1,11 @@
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
 import type { CatalogItem, CatalogVersion, FileRef } from "../catalog/catalog.js";
 import { CacheRefusal } from "./cache-refusal.js";
 import type { Fetcher } from "./fetcher.js";
+import { INSTALL_MARKER, writeInstallMarker } from "./install-marker.js";
 import { storeFile } from "./store.js";
+import { isStrictlyInside } from "./strictly-inside.js";
 
 const PLATFORM_KEY = /^[a-z0-9]+-[a-z0-9]+$/;
 
@@ -46,11 +48,6 @@ class PlacementRefusal extends Error {
   }
 }
 
-function isStrictlyInside(parent: string, child: string): boolean {
-  const path = relative(parent, child);
-  return path !== "" && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
-}
-
 function versionOf(item: CatalogItem, version: string): CatalogVersion {
   if (Object.hasOwn(item.versions, version)) return item.versions[version] as CatalogVersion;
   throw new PlacementRefusal(`the catalog lists no version ${version}`, "install a version the catalog lists");
@@ -60,6 +57,23 @@ function platformFiles(entry: CatalogVersion, platformKey: string): Record<strin
   if (entry.platforms === undefined) return {};
   if (Object.hasOwn(entry.platforms, platformKey)) return (entry.platforms[platformKey] as { files: Record<string, FileRef> }).files;
   throw new PlacementRefusal(`not built for ${platformKey}`, `use a platform the item lists, or ask its publisher for a ${platformKey} build`);
+}
+
+function filesOf(entry: CatalogVersion, platformKey: string): Record<string, FileRef> {
+  const shared = entry.files ?? {};
+  const perPlatform = platformFiles(entry, platformKey);
+  const ambiguous = Object.keys(perPlatform).find((key) => Object.hasOwn(shared, key));
+  if (ambiguous === undefined) return { ...shared, ...perPlatform };
+  throw new PlacementRefusal(
+    `file ${ambiguous} is listed both for every platform and for ${platformKey}, so which one to install is ambiguous`,
+    "list each file once, either for every platform or per platform",
+    ambiguous,
+  );
+}
+
+/** @implNote Compared without case, since Windows and macOS file systems would let `.INSTALLED.json` overwrite the marker. */
+function isMarkerPath(directory: string, destination: string): boolean {
+  return destination.toLowerCase() === resolve(directory, INSTALL_MARKER).toLowerCase();
 }
 
 function assertPlatformKeyShape(platformKey: string): void {
@@ -84,6 +98,9 @@ function placementsOf(directory: string, files: Record<string, FileRef>): Placem
     if (!isStrictlyInside(directory, destination)) {
       throw new PlacementRefusal(`file ${key} would be written outside ${directory}`, "remove the file from the catalog entry or give it a key inside the version", key);
     }
+    if (isMarkerPath(directory, destination)) {
+      throw new PlacementRefusal(`file ${key} would replace the cache's completion marker ${INSTALL_MARKER}`, "rename the file in the catalog entry", key);
+    }
     return { key, reference, destination };
   });
 }
@@ -97,9 +114,20 @@ function refusalOf(id: string, version: string, error: unknown, file?: string): 
 function planInstall(cache: string, id: string, item: CatalogItem, version: string, platformKey: string): InstallPlan {
   assertPlatformKeyShape(platformKey);
   const entry = versionOf(item, version);
-  const files = { ...entry.files, ...platformFiles(entry, platformKey) };
+  const files = filesOf(entry, platformKey);
   const directory = versionDirectory(cache, id, item, version, platformKey);
   return { directory, placements: placementsOf(directory, files) };
+}
+
+/** @implNote Written only after every file is stored and verified, so a refusal midway leaves no runnable version. */
+async function markComplete(installed: InstalledVersion, plan: InstallPlan): Promise<InstalledVersion | InstallRefusal> {
+  const hashes = Object.fromEntries(plan.placements.map((placement) => [placement.key, placement.reference.sha256]));
+  try {
+    await writeInstallMarker(plan.directory, hashes);
+  } catch (error) {
+    return refusalOf(installed.id, installed.version, error, INSTALL_MARKER);
+  }
+  return installed;
 }
 
 async function storeAll(id: string, version: string, plan: InstallPlan, fetcher: Fetcher): Promise<InstalledVersion | InstallRefusal> {
@@ -112,14 +140,15 @@ async function storeAll(id: string, version: string, plan: InstallPlan, fetcher:
       return refusalOf(id, version, error, placement.key);
     }
   }
-  return installed;
+  return markComplete(installed, plan);
 }
 
 /**
  * Fetches one version of a catalog item into its place in the cache, verifying every file.
  *
  * @remarks Plugins and hosts go to `<cache>/bundles/<id>/<version>/`, libraries to
- * `<cache>/libraries/<id>/<version>/<platform>/`. Every destination is checked before anything is written.
+ * `<cache>/libraries/<id>/<version>/<platform>/`. Every destination is checked before anything is
+ * written, and the version's completion marker is written last.
  */
 export async function installVersion(
   cache: string,

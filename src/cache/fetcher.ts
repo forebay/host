@@ -14,6 +14,7 @@ export interface Fetcher {
   fetch(url: string): Promise<Uint8Array>;
 }
 
+/** @internal Test seams into fetching, reached through {@link fetcherWith}; not part of the package entry. */
 export interface FetcherOptions {
   fetchImplementation?: typeof fetch;
   deadlineMs?: number;
@@ -24,6 +25,10 @@ export interface FetcherOptions {
  * never name a different path than the one the catalog's containment check saw.
  */
 async function readFileUrl(url: string): Promise<Uint8Array> {
+  const host = new URL(url).hostname;
+  if (host !== "") {
+    throw new CacheRefusal(`${url} names the host ${host}, which would read from a network share`, "serve remote files over https and local ones by a file url with no host");
+  }
   try {
     return new Uint8Array(await readFile(fileURLToPath(url)));
   } catch (error) {
@@ -32,9 +37,17 @@ async function readFileUrl(url: string): Promise<Uint8Array> {
 }
 
 /** @implNote fetch ends a stuck download on its signal only if it observes it, so an injected fetch is raced too. */
-function untilDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-  const expired = new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
-  return Promise.race([work, expired]);
+async function untilDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  let onAbort = (): void => {};
+  const expired = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
 }
 
 async function responseBytes(url: string, fetchImplementation: typeof fetch, signal: AbortSignal): Promise<Uint8Array> {
@@ -62,8 +75,8 @@ function schemeOf(url: string): string {
   }
 }
 
-/** Reads `file:` urls from disk and `https:` urls from the network; every other scheme is refused. */
-export function defaultFetcher(options: FetcherOptions = {}): Fetcher {
+/** @internal A fetcher over an injected fetch and deadline, for tests; not part of the package entry. */
+export function fetcherWith(options: FetcherOptions): Fetcher {
   const fetchImplementation = options.fetchImplementation ?? fetch;
   const deadlineMs = options.deadlineMs ?? DOWNLOAD_DEADLINE_MS;
   return {
@@ -74,4 +87,9 @@ export function defaultFetcher(options: FetcherOptions = {}): Fetcher {
       throw new CacheRefusal(`${url} uses the scheme ${scheme || "(none)"}, which the cache does not fetch`, "serve the catalog's files over https or from a local directory");
     },
   };
+}
+
+/** Reads `file:` urls from disk and `https:` urls from the network; every other scheme is refused. */
+export function defaultFetcher(): Fetcher {
+  return fetcherWith({});
 }
