@@ -57,3 +57,8 @@ export { HomeRefusal } from "./loader/home-refusal.js";
 export { findOnPath } from "./loader/on-path.js";
 export { detectApplication } from "./loader/detect-application.js";
 export type { MethodDetection } from "./methods/detection.js";
+export { detectThroughMethods } from "./methods/detect.js";
+export { operate } from "./methods/operate.js";
+export type { Operation } from "./methods/operate.js";
+export { installMethodProviders } from "./methods/providers.js";
+export type { MethodProvider } from "./methods/providers.js";

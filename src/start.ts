@@ -48,6 +48,8 @@ export interface HostOptions {
 export interface RunningHost {
   loaded: LoadedHost;
   places: HostPlaces;
+  /** The runtime this host opened; `stop` closes it. */
+  runtime: Runtime;
   bundles: BundleSource;
   hosts: HostsApi;
   /** The bus every plugin of this host publishes to, activity on `ACTIVITY_TOPIC` included. */
@@ -177,6 +179,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
     return {
       loaded,
       places,
+      runtime,
       bundles: origin.bundles,
       hosts: hostsApi(runtime, places, environment),
       events: bus,

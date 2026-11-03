@@ -12,7 +12,7 @@ import { startHostWith } from "../start.js";
 import type { RunningHost } from "../start.js";
 
 const SOURCE = siblingRuntime(REPOSITORY_ROOT);
-const FIXTURE_IDS = ["a", "viewer", "dormant", "greeter", "rival", "silent"];
+const FIXTURE_IDS = ["a", "viewer", "dormant", "greeter", "rival", "silent", "fake-install-method", "broken-install-method", "twin-install-method"];
 
 /** How many turns of the event loop to wait for a call to schedule its deadline before firing regardless. */
 const SCHEDULE_POLL_TURNS = 100;
