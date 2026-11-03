@@ -58,4 +58,34 @@ describe("checkLoaderStandard", () => {
   it("refuses a value that is not an object", () => {
     expect(checkLoaderStandard(null)).toHaveLength(1);
   });
+
+  it("accepts a package object with an options object and with extra members", () => {
+    const standard = validStandard();
+    Object.assign(standard.application.packages, { brew: { name: "claude", options: { tap: "x" } }, scoop: { name: "claude", bucket: "extras" } });
+    expect(checkLoaderStandard(standard)).toEqual([]);
+  });
+
+  it("refuses package options that are not an object, naming the method", () => {
+    const standard = validStandard();
+    Object.assign(standard.application.packages, { brew: { name: "claude", options: "x" } });
+    expect(pathsOf(standard)).toEqual(["/application/packages/brew"]);
+  });
+
+  it("refuses a method id that is not a portable id", () => {
+    const standard = validStandard();
+    Object.assign(standard.application.packages, { "": "x", "a b": "y" });
+    expect(pathsOf(standard)).toEqual(["/application/packages/", "/application/packages/a b"]);
+  });
+
+  it.each(["../x", "a/b", "", "-x", "a b"])("refuses the binary %j", (binary) => {
+    const standard = validStandard();
+    standard.application.binary = binary;
+    expect(pathsOf(standard)).toEqual(["/application/binary"]);
+  });
+
+  it.each([["../x"], ["a/b"], ["claude", "claude"], [""]])("refuses requested commands %j", (...requested) => {
+    const standard = validStandard();
+    standard.pathCommands.requested = requested;
+    expect(pathsOf(standard)).toEqual(["/pathCommands/requested"]);
+  });
 });

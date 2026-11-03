@@ -62,6 +62,12 @@ describe("readCatalog", () => {
       expect(refusal.path).toContain("/items/thing");
     });
 
+    it("refuses a binary that is a path, and package options that are not an object", () => {
+      expect(refusalOf(index({ ...hostItem, application: { ...application, binary: "../x" } })).path).toBe("/items/thing/application/binary");
+      const options = { ...application, packages: { brew: { name: "x", options: "y" } } };
+      expect(refusalOf(index({ ...hostItem, application: options })).path).toContain("/application/packages/brew");
+    });
+
     it("refuses an application with no binary, naming its path", () => {
       const { binary: _binary, ...withoutBinary } = application;
       expect(refusalOf(index({ ...hostItem, application: withoutBinary })).path).toBe("/items/thing/application/binary");
