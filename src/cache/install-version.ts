@@ -5,9 +5,8 @@ import { CacheRefusal } from "./cache-refusal.js";
 import type { Fetcher } from "./fetcher.js";
 import { INSTALL_MARKER, writeInstallMarker } from "./install-marker.js";
 import { storeFile } from "./store.js";
+import { isPlatformKey } from "./platform-key.js";
 import { isStrictlyInside } from "./strictly-inside.js";
-
-const PLATFORM_KEY = /^[a-z0-9]+-[a-z0-9]+$/;
 
 export interface InstalledVersion {
   ok: true;
@@ -77,7 +76,7 @@ function isMarkerPath(directory: string, destination: string): boolean {
 }
 
 function assertPlatformKeyShape(platformKey: string): void {
-  if (PLATFORM_KEY.test(platformKey)) return;
+  if (isPlatformKey(platformKey)) return;
   throw new PlacementRefusal(`a platform key is <os>-<arch> as Node spells them, for example linux-x64, not ${platformKey}`, "pass the platform key the catalog names its builds by, or omit it");
 }
 
