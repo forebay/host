@@ -5,6 +5,7 @@ import { isPlatformKey } from "../cache/platform-key.js";
 import { sha256Of } from "../cache/sha256.js";
 import { acceptsFileKey, acceptsItemId, acceptsVersion } from "../catalog/accepts.js";
 import type { Catalog, CatalogItem, CatalogVersion, FileRef } from "../catalog/catalog.js";
+import { foldedDuplicate } from "../catalog/folded-keys.js";
 import { newestVersion } from "../updates/semver.js";
 import { BuildRefusal } from "./build-refusal.js";
 import type { BundleOutput } from "./bundle-plugin.js";
@@ -57,6 +58,19 @@ function checkConsistent(inputs: CatalogInput[]): void {
   }
 }
 
+function sharedKeysOf(inputs: CatalogInput[], input: CatalogInput): string[] {
+  const shared = inputs.find((other) => other.platform === undefined && other.output.id === input.output.id && other.output.version === input.output.version);
+  return input.platform === undefined || shared === undefined ? [] : Object.keys(shared.output.files);
+}
+
+function checkFoldedKeys(inputs: CatalogInput[]): void {
+  for (const input of inputs) {
+    const pair = foldedDuplicate([...sharedKeysOf(inputs, input), ...Object.keys(input.output.files)]);
+    if (pair === undefined) continue;
+    throw new BuildRefusal(`${labelOf(input)} lists the files ${pair[0]} and ${pair[1]}, which differ only by case and would install into one file on Windows and macOS`, "rename one of the files");
+  }
+}
+
 function segmentsOf(input: CatalogInput): string[] {
   return [FILES_DIRECTORY, input.output.id, input.output.version, ...(input.platform === undefined ? [] : [input.platform])];
 }
@@ -103,6 +117,7 @@ function withLatest(items: Catalog["items"]): Catalog["items"] {
 export function buildLocalCatalog(inputs: CatalogInput[], outDirectory: string): string {
   inputs.forEach(checkInput);
   checkConsistent(inputs);
+  checkFoldedKeys(inputs);
   const out = resolve(outDirectory);
   const items: Catalog["items"] = {};
   for (const input of inputs) {

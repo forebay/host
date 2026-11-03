@@ -108,6 +108,27 @@ describe("readCatalog", () => {
     expect(readCatalog(index(item), ORIGIN).ok).toBe(false);
   });
 
+  it("reads an index that starts with a UTF-8 byte order mark", () => {
+    expect(Object.keys(catalogOf(`﻿${index(pluginItem)}`).items)).toEqual(["thing"]);
+  });
+
+  it("refuses two file keys that differ only by case, naming both", () => {
+    const refusal = refusalOf(index(withFiles({ "A.js": file("a"), "a.js": file("b") })));
+    expect(refusal.detail).toContain("A.js");
+    expect(refusal.detail).toContain("a.js");
+    expect(refusal.path).toBe("/items/thing/versions/1.0.0");
+  });
+
+  it("refuses a platform file key that differs only by case from a file listed for every platform", () => {
+    const item = { kind: "library", latest: "1.0.0", versions: { "1.0.0": { files: { "Lib/x.js": file("a") }, platforms: { "linux-x64": { files: { "lib/X.js": file("b") } } } } } };
+    expect(refusalOf(index(item)).detail).toContain("lib/X.js");
+  });
+
+  it("accepts keys that differ only by case on different platforms", () => {
+    const item = { kind: "library", latest: "1.0.0", versions: { "1.0.0": { platforms: { "linux-x64": { files: { "A.js": file("a") } }, "win32-x64": { files: { "a.js": file("b") } } } } } };
+    expect(readCatalog(index(item), ORIGIN).ok).toBe(true);
+  });
+
   it("refuses text that is not JSON", () => {
     expect(refusalOf("{nope").detail).toMatch(/JSON/);
   });

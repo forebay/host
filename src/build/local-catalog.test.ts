@@ -114,6 +114,22 @@ describe("buildLocalCatalog", () => {
     expect(() => readFileSync(join(base, "catalog", "catalog.json"))).toThrow();
   });
 
+  it("refuses two file keys that differ only by case, before copying anything", () => {
+    const output = libraryOutput();
+    const source = output.files["lib/native.node"] as string;
+    const colliding = { ...output, files: { "lib/Native.node": source, "lib/native.node": source } };
+    expect(() => buildLocalCatalog([{ kind: "library", output: colliding, platform: "linux-x64" }], join(base, "catalog"))).toThrow(/lib\/Native\.node.*lib\/native\.node/);
+    expect(() => readFileSync(join(base, "catalog", "catalog.json"))).toThrow();
+  });
+
+  it("refuses a platform file that differs only by case from a file given for every platform", () => {
+    const output = libraryOutput();
+    const source = output.files["lib/native.node"] as string;
+    const shared = { ...output, files: { "README.md": source } };
+    const platform = { ...output, files: { "readme.md": source } };
+    expect(() => buildLocalCatalog([{ kind: "library", output: shared }, { kind: "library", output: platform, platform: "linux-x64" }], join(base, "catalog"))).toThrow(BuildRefusal);
+  });
+
   it("refuses a file key the catalog would refuse", () => {
     const output = libraryOutput();
     const refused = { ...output, files: { "lib/../native.node": output.files["lib/native.node"] as string } };
