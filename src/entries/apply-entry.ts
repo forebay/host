@@ -11,7 +11,7 @@ const ENTRY_WRITERS: Readonly<Record<string, EntryWriter>> = {
 };
 
 /** What writing one loader's application entry did: the sequence of each change the runtime recorded, or why there is no entry. */
-export type ApplicationEntry = { written: true; sequences: number[] } | { written: false; detail: string };
+export type ApplicationEntry = { written: true; sequences: number[] } | { written: false; detail: string; fix: string };
 
 /**
  * Makes `loader`'s application start the loader's host through its own plugin mechanism, every file,
@@ -23,7 +23,9 @@ export type ApplicationEntry = { written: true; sequences: number[] } | { writte
  */
 export function writeApplicationEntry(runtime: Runtime, places: HostPlaces, loader: EntryLoader): ApplicationEntry {
   const writer = Object.hasOwn(ENTRY_WRITERS, loader.application.id) ? ENTRY_WRITERS[loader.application.id] : undefined;
-  if (writer === undefined) return { written: false, detail: `this host writes no entry for the application ${loader.application.id}, so it starts only through the launcher` };
+  if (writer === undefined) {
+    return { written: false, detail: `this host writes no entry for the application ${loader.application.id}`, fix: `start ${loader.application.label} through the command the loader requested` };
+  }
   const sequences = writer(places, loader).flatMap((change) => {
     const { recorded, sequence } = runtime.changes.apply({ places, host: loader.id, change });
     return recorded && sequence !== undefined ? [sequence] : [];

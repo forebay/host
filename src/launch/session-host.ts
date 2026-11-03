@@ -1,9 +1,27 @@
 import { openCacheSession } from "../cli/cache-session.js";
 import { prepareLoader, startLoaderSession } from "./session.js";
 
+const STOP_FIX = "nothing is needed now; a background host this session held exits by itself once it sees no live holder";
+
 /** A loader's host running inside the application's own process for the application's session. */
 export interface SessionHost {
   stop(): Promise<void>;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The listener that stops the session host as its process exits.
+ *
+ * @implNote The process is the application's, so a stop that fails is written to stderr, never left
+ * as an unhandled rejection that would take the application down or print where it parses.
+ */
+export function exitStopper(stop: () => Promise<void>, writeError: (text: string) => void): () => void {
+  return () => {
+    stop().catch((error: unknown) => writeError(`spisor could not stop the session host: ${messageOf(error)}\nfix: ${STOP_FIX}\n`));
+  };
 }
 
 /**
@@ -20,7 +38,7 @@ export async function sessionHostCommand(loaderId: string, bundleFile: string, e
   const stopSession = await startLoaderSession(session, prepareLoader(session, loaderId), environment);
   let stopping: Promise<void> | undefined;
   const stop = () => (stopping ??= stopSession());
-  const stopOnExit = () => void stop();
+  const stopOnExit = exitStopper(stop, (text) => process.stderr.write(text));
   process.once("exit", stopOnExit);
   return {
     stop: () => {

@@ -197,7 +197,7 @@ describe("an application with no entry writer", () => {
 
     const entry = writeApplicationEntry(runtime, places, loader);
 
-    expect(entry).toEqual({ written: false, detail: expect.stringContaining("elsewhere") });
+    expect(entry).toEqual({ written: false, detail: expect.stringContaining("elsewhere"), fix: expect.stringContaining("command") });
     expect(existsSync(loader.home)).toBe(false);
     expect(remove().reversed).toBe(0);
   });

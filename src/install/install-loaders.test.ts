@@ -164,11 +164,29 @@ describe("installLoaders without commands", () => {
     await install(catalog, report);
 
     expect(report.loaders.map(({ id, entry }) => [id, entry.written])).toEqual([["claude-test-loader", true], ["alpha-loader", false]]);
-    expect(report.loaders[1]?.entry).toEqual({ written: false, detail: expect.stringContaining("alpha") });
+    expect(report.loaders[1]?.entry).toEqual({ written: false, detail: expect.stringContaining("alpha"), fix: expect.stringContaining("command") });
     expect(JSON.parse(readFileSync(join(claudeHome, "settings.json"), "utf8"))).toMatchObject({ enabledPlugins: { "spisor@spisor": true } });
 
     hostsApi(runtime, places, environment).remove("claude-test-loader");
     expect(readdirSync(claudeHome)).toEqual([]);
+  });
+
+  it.each([
+    ["is not JSON", '{ "theme": "dark",\n'],
+    ["holds a non-object enabledPlugins", '{\n  "enabledPlugins": ["other@market"],\n  "theme": "dark"\n}\n'],
+  ])("reports the entry unwritten when the application's settings.json %s, keeping the loader registered with its background host and the file byte-identical", async (_case, settings) => {
+    const catalog = await catalogOf([{ id: "claude-test-loader", applicationId: "claude", pathCommands: NO_COMMANDS, background: ["helper-host"] }], ["helper-host"]);
+    const report = reportOf([{ id: "claude", state: "installed" }]);
+    const claudeHome = join(base, "user", "homes", "claude");
+    mkdirSync(claudeHome, { recursive: true });
+    writeFileSync(join(claudeHome, "settings.json"), settings);
+    await install(catalog, report);
+
+    expect(report.unavailable).toEqual([]);
+    expect(report.loaders).toMatchObject([{ id: "claude-test-loader", entry: { written: false, detail: expect.stringContaining("settings.json"), fix: expect.any(String) } }]);
+    expect(registration("claude-test-loader")).toMatchObject({ kind: "host", version: "1.0.0" });
+    expect(registration("helper-host")).toMatchObject({ kind: "host", version: "1.0.0" });
+    expect(readFileSync(join(claudeHome, "settings.json"), "utf8")).toBe(settings);
   });
 
   it("keeps the first install's provenance on a second install", async () => {

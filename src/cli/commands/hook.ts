@@ -4,9 +4,9 @@ import { isRecord } from "../../plugins/is-record.js";
 import { standardOf } from "../../launch/session.js";
 import { registerHost } from "../../registration.js";
 import { openRuntime } from "../../runtime/open.js";
-import { recordRunningVersion } from "../../updates/references.js";
-import { openCacheSession, readRegistration } from "../cache-session.js";
-import type { CacheSession } from "../cache-session.js";
+import { readHostReferences, recordReferences } from "../../updates/references.js";
+import { hostRunOf, openCacheSession, readRegistration } from "../cache-session.js";
+import type { CacheSession, HostRun } from "../cache-session.js";
 import { CommandRefusal } from "../command-refusal.js";
 
 const HOOK_EVENTS = new Set(["session-start"]);
@@ -22,8 +22,16 @@ function checkEvent(event: string): void {
   throw new CommandRefusal(`the hook event ${JSON.stringify(event)} is not one this host answers`, `run the hook with one of: ${[...HOOK_EVENTS].join(", ")}`);
 }
 
+/** Records what a start of the loader runs, as `launch` does, so a sweep keeps that version and the one it switched from. */
+function recordRun(state: string, loaderId: string, run: HostRun): void {
+  const recorded = readHostReferences(state, loaderId);
+  recordReferences(state, loaderId, { run: { ...recorded.run, [loaderId]: run.version }, next: run.next, rollback: run.rollback });
+}
+
+/** @implNote The version is chosen by {@link hostRunOf}, the rule every start of the loader follows, so a scheduled version is switched to here as a launch would. */
 function registerLoader(session: CacheSession, request: HookRequest, environment: Record<string, string>): void {
-  const { version } = readRegistration(session, request.loaderId);
+  const run = hostRunOf(session, request.loaderId, readRegistration(session, request.loaderId).version);
+  const { version } = run;
   const standard = standardOf(session, request.loaderId, version);
   const { places } = session.setup;
   const identity = loaderIdentity({ id: request.loaderId, version, application: standard.application, pathCommands: standard.pathCommands, cache: places.cache, environment });
@@ -33,7 +41,7 @@ function registerLoader(session: CacheSession, request: HookRequest, environment
   } finally {
     runtime.close();
   }
-  recordRunningVersion(places.state, request.loaderId, version);
+  recordRun(places.state, request.loaderId, run);
 }
 
 function refusalText(error: unknown): string {

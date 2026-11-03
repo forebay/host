@@ -62,7 +62,7 @@ export function claudeCodeEntry(places: HostPlaces, loader: EntryLoader): EntryC
     { kind: "file", path: join(root, MANIFEST_DIRECTORY, "plugin.json"), content: jsonContent(pluginManifest()) },
     { kind: "file", path: join(root, HOOKS_DIRECTORY, "hooks.json"), content: jsonContent(hooks(places, loader.id)) },
     { kind: "directory", path: loader.home },
-    settingsKey(loader.home, ["extraKnownMarketplaces", MARKETPLACE_NAME], { source: { source: "directory", path: root } }),
     settingsKey(loader.home, ["enabledPlugins", `${PLUGIN_NAME}@${MARKETPLACE_NAME}`], true),
+    settingsKey(loader.home, ["extraKnownMarketplaces", MARKETPLACE_NAME], { source: { source: "directory", path: root } }),
   ];
 }

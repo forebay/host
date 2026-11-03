@@ -1,5 +1,6 @@
 import type { Fetcher } from "../cache/fetcher.js";
 import { writeApplicationEntry } from "../entries/apply-entry.js";
+import type { EntryLoader } from "../entries/entry-change.js";
 import type { Catalog } from "../catalog/catalog.js";
 import type { HostPlaces } from "../context/places.js";
 import { readInstalledStandard } from "../loader/installed-standard.js";
@@ -43,19 +44,31 @@ function messageOf(error: unknown): { detail: string; fix: string } {
   };
 }
 
+/**
+ * @implNote An entry that cannot be written is a line of the loader's report, never a failure of the
+ * loader: its registration and commands already stand, and the launcher starts it without the entry.
+ */
+function entryOf(runtime: Runtime, places: HostPlaces, loader: EntryLoader): LoaderReport["entry"] {
+  try {
+    const entry = writeApplicationEntry(runtime, places, loader);
+    return entry.written ? { written: true } : { written: false, detail: entry.detail, fix: entry.fix };
+  } catch (error) {
+    return { written: false, ...messageOf(error) };
+  }
+}
+
 function registerLoader(runtime: Runtime, options: InstallLoadersOptions, loader: CatalogLoader, version: string, pathCommands: LoaderStandard["pathCommands"]): LoaderReport {
   const { places, environment } = options;
   const identity = loaderIdentity({ id: loader.id, version, application: loader.application, pathCommands, cache: places.cache, environment });
   const registered = registerHost(runtime, places, identity, catalogProvenance(places.cache, loader.id, version, new Date()), environment);
   recordRunningVersion(places.state, loader.id, version);
-  const entry = writeApplicationEntry(runtime, places, { id: loader.id, application: loader.application, home: identity.home });
   return {
     id: loader.id,
     application: loader.application.id,
     home: identity.home,
     commands: registered.commands,
     refusedCommands: registered.refusedCommands,
-    entry: entry.written ? { written: true } : { written: false, detail: entry.detail },
+    entry: entryOf(runtime, places, { id: loader.id, application: loader.application, home: identity.home }),
   };
 }
 
