@@ -5,13 +5,11 @@ import { hostDirectoryOutput } from "../build/built-directory.js";
 import type { CatalogInput } from "../build/local-catalog.js";
 import { defaultFetcher } from "../cache/fetcher.js";
 import type { HostPlaces } from "../context/places.js";
-import { catalogProvenance, forebayHostHome } from "../install/forebay-host.js";
+import { forebayHostHome } from "../install/forebay-host.js";
 import { installCatalog } from "../install/install-catalog.js";
 import { installEcosystem } from "../install/install-ecosystem.js";
-import { installItems } from "../install/install-items.js";
 import { installLoaders } from "../install/install-loaders.js";
 import { emptyReport } from "../install/install-report.js";
-import { registerHost } from "../registration.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
 import { REPOSITORY_ROOT } from "./context.js";
 import { ecosystemCatalog, placesEnvironment } from "./ecosystem-catalog.js";
@@ -51,21 +49,19 @@ function placesOf(environment: Record<string, string>): HostPlaces {
   }
 }
 
-function registerBackgroundHost(places: HostPlaces, base: string, version: string, settings: Record<string, unknown>): void {
+function writePortableSettings(places: HostPlaces, settings: Record<string, unknown>): void {
   const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
   try {
-    const identity = { id: BACKGROUND_ID, version, home: join(base, "homes", BACKGROUND_ID), requiresCommand: false, commands: [] };
-    registerHost(runtime, places, identity, catalogProvenance(places.cache, BACKGROUND_ID, version, new Date()), {});
-    for (const [key, value] of Object.entries(settings)) runtime.settings.set({ home: identity.home, portable: places.portable, key, value, layer: "portable" });
+    for (const [key, value] of Object.entries(settings)) runtime.settings.set({ home: forebayHostHome(places), portable: places.portable, key, value, layer: "portable" });
   } finally {
     runtime.close();
   }
 }
 
 /**
- * Installs the catalog at `catalogPath` into places under `base` the way `forebay-host install` does
- * for a machine with the fixture application, then installs and registers the fixture background
- * host and writes `settings` to the portable layer.
+ * Installs `catalog` into places under `base` the way `forebay-host install` does for a machine with
+ * the fixture application, the fixture background host its loader names included, then writes
+ * `settings` to the portable layer.
  */
 export async function installLaunchEcosystem(base: string, catalog: EcosystemCatalog, settings: Record<string, unknown>): Promise<LaunchEcosystem> {
   const environment = placesEnvironment(base);
@@ -77,8 +73,7 @@ export async function installLaunchEcosystem(base: string, catalog: EcosystemCat
   const report = { ...emptyReport(), applications: [{ id: APPLICATION_ID, state: "installed" as const }] };
   const installed = await installCatalog(sources, places.cache, report);
   await installLoaders({ catalog: installed, places, runtimeSource: siblingRuntime(REPOSITORY_ROOT), fetcher, environment }, report);
-  const background = await installItems(installed, [{ id: BACKGROUND_ID }], "host", places.cache, fetcher, report);
   if (report.unavailable.length > 0) throw new Error(`the launch ecosystem did not install: ${JSON.stringify(report.unavailable)}`);
-  registerBackgroundHost(places, base, background[BACKGROUND_ID] as string, settings);
+  writePortableSettings(places, settings);
   return { environment, places };
 }

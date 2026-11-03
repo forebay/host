@@ -8,7 +8,7 @@ import { registerHost } from "../registration.js";
 import { readHostReferences, recordReferences } from "../updates/references.js";
 import { openRuntime } from "../runtime/open.js";
 import type { Runtime, RuntimeSource } from "../runtime/open.js";
-import { catalogProvenance } from "./forebay-host.js";
+import { catalogProvenance, ownHostHome } from "./forebay-host.js";
 import { installItems } from "./install-items.js";
 import type { InstallReport, LoaderReport } from "./install-report.js";
 import { loaderIdentity } from "./loader-identity.js";
@@ -42,10 +42,10 @@ function messageOf(error: unknown): { detail: string; fix: string } {
   };
 }
 
-/** @implNote Keeps what the loader scheduled for its next start, so recording the registered version never forgets an update already fetched. */
-function recordRegisteredVersion(state: string, loaderId: string, version: string): void {
-  const recorded = readHostReferences(state, loaderId);
-  recordReferences(state, loaderId, { run: { ...recorded.run, [loaderId]: version }, next: recorded.next });
+/** @implNote Keeps what the host scheduled for its next start, so recording the registered version never forgets an update already fetched. */
+function recordRegisteredVersion(state: string, hostId: string, version: string): void {
+  const recorded = readHostReferences(state, hostId);
+  recordReferences(state, hostId, { ...recorded, run: { ...recorded.run, [hostId]: version } });
 }
 
 function registerLoader(runtime: Runtime, options: InstallLoadersOptions, loader: CatalogLoader, version: string, pathCommands: LoaderStandard["pathCommands"]): LoaderReport {
@@ -56,22 +56,46 @@ function registerLoader(runtime: Runtime, options: InstallLoadersOptions, loader
   return { id: loader.id, application: loader.application.id, home: identity.home, commands: registered.commands, refusedCommands: registered.refusedCommands };
 }
 
-function registerInstalled(runtime: Runtime, options: InstallLoadersOptions, report: InstallReport, loader: CatalogLoader, version: string): void {
+/** Registers one installed loader, answering the background hosts it names once it is registered. */
+function registerInstalled(runtime: Runtime, options: InstallLoadersOptions, report: InstallReport, loader: CatalogLoader, version: string): string[] {
   const standard = readInstalledStandard(options.places.cache, loader.id, version);
   if (typeof standard === "string") {
     report.unavailable.push({ id: loader.id, detail: standard, fix: "reinstall the loader from a catalog that lists a valid host.json" });
-    return;
+    return [];
   }
   try {
     report.loaders.push(registerLoader(runtime, options, loader, version, standard.pathCommands));
+    return standard.background;
   } catch (error) {
     report.unavailable.push({ id: loader.id, ...messageOf(error) });
+    return [];
+  }
+}
+
+/** @implNote A background host loads into no application, so it writes nothing onto the PATH and reads no environment to register. */
+function registerBackgroundHost(runtime: Runtime, places: HostPlaces, hostId: string, version: string): void {
+  const identity = { id: hostId, version, home: ownHostHome(places, hostId), requiresCommand: false, commands: [] };
+  registerHost(runtime, places, identity, catalogProvenance(places.cache, hostId, version, new Date()), {});
+  recordRegisteredVersion(places.state, hostId, version);
+}
+
+/** Installs and registers every background host the registered loaders name; one the catalog lacks is reported under `unavailable`. */
+async function installBackgroundHosts(runtime: Runtime, options: InstallLoadersOptions, report: InstallReport, background: readonly string[]): Promise<void> {
+  const ids = [...new Set(background)];
+  const installed = await installItems(options.catalog, ids.map((id) => ({ id })), "host", options.places.cache, options.fetcher, report);
+  for (const [hostId, version] of Object.entries(installed)) {
+    try {
+      registerBackgroundHost(runtime, options.places, hostId, version);
+    } catch (error) {
+      report.unavailable.push({ id: hostId, ...messageOf(error) });
+    }
   }
 }
 
 /**
  * Installs the loader bundle of every application the report calls installed or detected and
- * registers each as a host of its own, requesting the commands its `host.json` asks for.
+ * registers each as a host of its own, requesting the commands its `host.json` asks for, then
+ * installs and registers every background host a registered loader names.
  *
  * @remarks An application with no loader in the catalog gets none. A loader that cannot be
  * installed or registered is reported under `unavailable` and the rest still register.
@@ -83,10 +107,11 @@ export async function installLoaders(options: InstallLoadersOptions, report: Ins
   const installed = await installItems(options.catalog, loaders.map(({ id }) => ({ id })), "host", options.places.cache, options.fetcher, report);
   const runtime = openRuntime(options.runtimeSource);
   try {
-    for (const loader of loaders) {
+    const background = loaders.flatMap((loader) => {
       const version = installed[loader.id];
-      if (version !== undefined) registerInstalled(runtime, options, report, loader, version);
-    }
+      return version === undefined ? [] : registerInstalled(runtime, options, report, loader, version);
+    });
+    await installBackgroundHosts(runtime, options, report, background);
   } finally {
     runtime.close();
   }
