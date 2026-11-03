@@ -38,8 +38,8 @@ function versionOf(version: unknown): string | null {
   return typeof version === "string" && version !== "" ? version : null;
 }
 
-function locateIn(root: string, id: string): BundleEntry | null {
-  const folder = join(root, id);
+/** The bundle whose `plugin.json` sits directly in `folder`, or null when there is none. */
+export function bundleInFolder(folder: string, id: string): BundleEntry | null {
   const manifestPath = join(folder, MANIFEST_FILE);
   if (!existsSync(manifestPath)) return null;
   const manifest = readManifestFileOrNull(manifestPath);
@@ -48,7 +48,7 @@ function locateIn(root: string, id: string): BundleEntry | null {
 
 /** Bundles laid out as `<root>/<id>/plugin.json`, each with the entry its manifest names beside it. */
 export function directoryBundles(root: string): BundleSource {
-  const locate = (id: string) => locateIn(root, id);
+  const locate = (id: string) => bundleInFolder(join(root, id), id);
   return {
     list: () => folderNames(root).flatMap((id) => locate(id) ?? []),
     locate,
