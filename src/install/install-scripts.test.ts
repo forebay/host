@@ -10,8 +10,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
 import { ecosystemCatalog, placesEnvironment } from "../__fixtures__/ecosystem-catalog.js";
 import type { EcosystemCatalog } from "../__fixtures__/ecosystem-catalog.js";
-import { withRenderedPins } from "./install-script-pins.js";
-import type { InstallScriptKind } from "./install-script-pins.js";
+import { catalogKeyPatterns } from "./install-script-patterns.js";
+import { renderInstallScript } from "./render-install-script.js";
+import type { InstallScriptKind } from "./render-install-script.js";
 import { COMPATIBLE_RUNTIME_MAJOR, RUNTIME_PIN } from "./runtime-pin.js";
 import type { PinnedRuntime } from "./runtime-pin.js";
 
@@ -23,6 +24,8 @@ const PLUGIN_ARGUMENTS = FIXTURE_PLUGINS.flatMap((id) => ["--plugin", id]);
 const TEST_RUNTIME_VERSION = "99.0.0";
 const SCRIPT_TIMEOUT = 300_000;
 const runFile = promisify(execFile);
+const CATALOG_SCHEMA: unknown = JSON.parse(readFileSync(join(REPOSITORY_ROOT, "catalog.schema.json"), "utf8"));
+const UNPACKED_MARKER = ".unpacked";
 
 /** @implNote Without it PowerShell 5.1 takes node.exe for a document and starts it detached, so its output and exit code are lost. */
 const WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
@@ -77,7 +80,10 @@ function powershell(): string {
   return join(systemRoot(), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
-/** The running node packed the way the pinned archive is laid out, `<stem>/bin/node` in a tar.gz or `<stem>/node.exe` in a zip. */
+/**
+ * The running node packed the way the pinned archive is laid out, `<stem>/bin/node` in a tar.gz or
+ * `<stem>/node.exe` in a zip, beside the other files a real archive carries.
+ */
 function buildTestRuntime(directory: string): TestRuntime {
   const platform = currentPlatformKey();
   const stem = `test-runtime-${platform}`;
@@ -86,6 +92,9 @@ function buildTestRuntime(directory: string): TestRuntime {
   mkdirSync(dirname(binary), { recursive: true });
   copyFileSync(process.execPath, binary);
   chmodSync(binary, 0o755);
+  mkdirSync(join(stage, stem, "lib"), { recursive: true });
+  writeFileSync(join(stage, stem, "README.md"), "not the runtime");
+  writeFileSync(join(stage, stem, "lib", "npm.js"), "not the runtime either");
   const served = join(directory, "served", IS_WINDOWS ? `${stem}.zip` : `${stem}.tar.gz`);
   mkdirSync(dirname(served), { recursive: true });
   if (IS_WINDOWS) execFileSync(windowsTar(), ["--format", "zip", "-cf", served, "-C", stage, stem]);
@@ -99,7 +108,7 @@ function renderTestScript(directory: string): string {
   const committed = readFileSync(SCRIPT_FILES[SCRIPT_KIND], "utf8");
   const path = join(directory, "script", `install.${SCRIPT_KIND}`);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, withRenderedPins(committed, SCRIPT_KIND, runtime.pin, COMPATIBLE_RUNTIME_MAJOR));
+  writeFileSync(path, renderInstallScript(committed, SCRIPT_KIND, runtime.pin, COMPATIBLE_RUNTIME_MAJOR, CATALOG_SCHEMA));
   return path;
 }
 
@@ -174,6 +183,10 @@ function cachedArchive(): string {
   return join(runtimeDirectory(), IS_WINDOWS ? `${runtime.stem}.zip` : `${runtime.stem}.tar.gz`);
 }
 
+function unpackedMarker(): string[] {
+  return readFileSync(join(runtimeDirectory(), UNPACKED_MARKER), "utf8").split(/\r?\n/).filter((line) => line !== "");
+}
+
 function installedRuntime(): string {
   return IS_WINDOWS ? join(runtimeDirectory(), runtime.stem, "node.exe") : join(runtimeDirectory(), runtime.stem, "bin", "node");
 }
@@ -215,6 +228,8 @@ const HOSTILE_CATALOGS: HostileCatalog[] = [
   { name: "a file whose bytes do not have the listed hash", change: (files) => void ((files["host.js"] as { sha256: string }).sha256 = "0".repeat(64)) },
   { name: "a file that cannot be fetched", change: (files) => void ((files["host.js"] as { url: string }).url = "not-served/host.js") },
   { name: "a file served cut short", change: (files) => void ((files["host.js"] as { url: string }).url = servedCutShort("host.js")) },
+  { name: "a file key the schema refuses for ending in a dot", change: (files) => void (files["host.json."] = { ...(files["host.json"] as { url: string; sha256: string; size: number }) }) },
+  { name: "two file keys that differ only by case", change: (files) => void (files["HOST.json"] = { ...(files["host.json"] as { url: string; sha256: string; size: number }) }) },
 ];
 
 /** A copy of the catalog's `key` holding only its first half, served from beside the index, answering its relative url. */
@@ -250,13 +265,14 @@ function plantStaleHost(): string {
 }
 
 describe("the committed install scripts", () => {
-  it.each(["sh", "ps1"] as const)("carry RUNTIME_PIN in the pins of install.%s", (kind) => {
+  it.each(["sh", "ps1"] as const)("carry RUNTIME_PIN and the catalog schema's patterns in install.%s", (kind) => {
     const committed = readFileSync(SCRIPT_FILES[kind], "utf8");
-    expect(withRenderedPins(committed, kind, RUNTIME_PIN, COMPATIBLE_RUNTIME_MAJOR)).toBe(committed);
+    expect(renderInstallScript(committed, kind, RUNTIME_PIN, COMPATIBLE_RUNTIME_MAJOR, CATALOG_SCHEMA)).toBe(committed);
     for (const build of Object.values(RUNTIME_PIN.platforms)) {
       expect(committed).toContain(build.url);
       expect(committed).toContain(build.sha256);
     }
+    for (const pattern of Object.values(catalogKeyPatterns(CATALOG_SCHEMA))) expect(committed).toContain(pattern);
   });
 
   it.each(["sh", "ps1"] as const)("contain no en or em dash and nothing outside ASCII in install.%s", (kind) => {
@@ -287,7 +303,6 @@ describe(`install.${SCRIPT_KIND} on this machine`, () => {
   it("acquires the pinned runtime when none is on the PATH, installs the host from the catalog and leaves the plugins active", async () => {
     const run = await install();
     expect(fetchedLines(run).length).toBeGreaterThan(0);
-    expect(sha256OfFile(cachedArchive())).toBe(runtime.pin.platforms[currentPlatformKey()]?.sha256);
     expect(existsSync(join(hostDirectory(), ".installed.json"))).toBe(true);
     const reported = status(installedRuntime());
     expect(reported.id).toBe("forebay-host");
@@ -302,15 +317,41 @@ describe(`install.${SCRIPT_KIND} on this machine`, () => {
     expect([...status(installedRuntime()).active].sort()).toEqual(FIXTURE_PLUGINS);
   }, SCRIPT_TIMEOUT);
 
-  it("refetches a cached runtime archive whose bytes changed", async () => {
+  it("keeps only the runtime's executable, and the archive's hash in place of the archive", async () => {
     await install();
-    const bytes = readFileSync(cachedArchive());
+    expect(existsSync(cachedArchive())).toBe(false);
+    expect(existsSync(join(runtimeDirectory(), runtime.stem, "README.md"))).toBe(false);
+    expect(existsSync(join(runtimeDirectory(), runtime.stem, "lib"))).toBe(false);
+    expect(unpackedMarker()).toEqual([runtime.pin.platforms[currentPlatformKey()]?.sha256, sha256OfFile(installedRuntime())]);
+    expect(readdirSync(runtimeDirectory()).filter((name) => !name.startsWith(".")).sort()).toEqual([runtime.stem]);
+  }, SCRIPT_TIMEOUT);
+
+  it("acquires the runtime again when its executable's bytes changed", async () => {
+    await install();
+    const bytes = readFileSync(installedRuntime());
     bytes[bytes.length - 1] = (bytes[bytes.length - 1] as number) ^ 0xff;
-    writeFileSync(cachedArchive(), bytes);
+    writeFileSync(installedRuntime(), bytes);
     const run = await install();
     expect(fetchedLines(run).some((line) => line.includes(`node ${TEST_RUNTIME_VERSION}`))).toBe(true);
-    expect(sha256OfFile(cachedArchive())).toBe(runtime.pin.platforms[currentPlatformKey()]?.sha256);
+    expect(unpackedMarker()[1]).toBe(sha256OfFile(installedRuntime()));
     expect([...status(installedRuntime()).active].sort()).toEqual(FIXTURE_PLUGINS);
+  }, SCRIPT_TIMEOUT);
+
+  it("removes the runtime versions no longer pinned when it acquires the pinned one", async () => {
+    const stale = join(cache(), "runtimes", "node", "1.0.0", currentPlatformKey());
+    mkdirSync(stale, { recursive: true });
+    writeFileSync(join(stale, "node"), "an older pin");
+    await install();
+    expect(existsSync(join(cache(), "runtimes", "node", "1.0.0"))).toBe(false);
+    expect(existsSync(installedRuntime())).toBe(true);
+  }, SCRIPT_TIMEOUT);
+
+  it("installs from a catalog index that starts with a UTF-8 byte order mark", async () => {
+    const path = join(dirname(catalog.path), "with-byte-order-mark.json");
+    writeFileSync(path, `\uFEFF${readFileSync(catalog.path, "utf8")}`);
+    const run = await runScript([path, ...PLUGIN_ARGUMENTS], { withNode: true });
+    expect(run.status, run.stderr).toBe(0);
+    expect([...status(process.execPath).active].sort()).toEqual(FIXTURE_PLUGINS);
   }, SCRIPT_TIMEOUT);
 
   it("uses a compatible runtime on the PATH and downloads none", async () => {
@@ -332,9 +373,16 @@ describe(`install.${SCRIPT_KIND} on this machine`, () => {
     expect(run.status, run.stderr).toBe(1);
     expect(run.stderr).toContain("fix: ");
     expect(existsSync(ran)).toBe(false);
+    expect(existsSync(join(hostDirectory(), ".installed.json"))).toBe(false);
     expect(existsSync(join(cache(), "libraries"))).toBe(false);
     expect(existsSync(join(cache(), "bundles", "forebay-host", "escape.js"))).toBe(false);
     expect(strayFiles(hostDirectory())).toEqual([]);
+  }, SCRIPT_TIMEOUT);
+
+  it.runIf(IS_WINDOWS)("leaves no preference or variable in the shell that runs it through Invoke-Expression", async () => {
+    const command = `$ErrorActionPreference = 'Continue'; Invoke-Expression ([System.IO.File]::ReadAllText('${script}')); Write-Output ('{0}|{1}|{2}' -f $ErrorActionPreference, (Test-Path variable:RuntimeBuilds), $LASTEXITCODE)`;
+    const { stdout } = await runFile(powershell(), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], { cwd: base, env: childEnvironment(), encoding: "utf8", timeout: SCRIPT_TIMEOUT });
+    expect(stdout.trim().split(/\r?\n/).pop()).toBe("Continue|False|1");
   }, SCRIPT_TIMEOUT);
 
   it.skipIf(IS_WINDOWS)("names curl as the one thing to install when it is missing", async () => {

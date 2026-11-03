@@ -32,21 +32,30 @@ select_runtime_build() {
 }
 # end of rendered pins
 
+# rendered from catalog.schema.json by scripts/render-install-scripts.mjs; edit the schema there
+FILE_KEY_PATTERN='^[^/\\:]*[^/\\:. ](?:/[^/\\:]*[^/\\:. ])*(?![\s\S])'
+VERSION_PATTERN='^(?![\s\S]*\.\.)[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]*[0-9A-Za-z-])?(\+[0-9A-Za-z.-]*[0-9A-Za-z-])?(?![\s\S])'
+SHA256_PATTERN='^[0-9a-f]{64}(?![\s\S])'
+# end of rendered patterns
+
 HOST_ID='forebay-host'
 INSTALL_MARKER='.installed.json'
 UNPACKED_MARKER='.unpacked'
 
 LIST_HOST_FILES='
 const fail = (detail, fix) => { process.stderr.write(detail + "\nfix: " + fix + "\n"); process.exit(1); };
-const argument = process.argv[1];
+const [argument, keyPattern, versionPattern, sha256Pattern] = process.argv.slice(1);
 const origin = /^https:\/\//.test(argument) ? argument : require("url").pathToFileURL(require("path").resolve(argument)).href;
-const KEY = /^[A-Za-z0-9_][A-Za-z0-9._-]*(\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/;
-const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$/;
+const KEY = new RegExp(keyPattern, "u");
+const VERSION = new RegExp(versionPattern, "u");
+const SHA256 = new RegExp(sha256Pattern, "u");
 const REQUIRED = ["host.js", "reconcile-worker.js", "host.json"];
+const folded = (key) => key.normalize("NFC").toLowerCase();
 let text = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => { text += chunk; });
 process.stdin.on("end", () => {
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   let catalog;
   try { catalog = JSON.parse(text); } catch { fail("the catalog " + argument + " is not a JSON catalog index", "pass the catalog.json of a catalog, or its https url"); }
   const item = catalog && catalog.items && catalog.items["forebay-host"];
@@ -59,10 +68,13 @@ process.stdin.on("end", () => {
   const base = new URL(origin);
   const directory = base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1);
   const lines = [version];
+  const seen = new Map();
   for (const [key, reference] of Object.entries(files)) {
+    if (seen.has(folded(key))) fail("the catalog lists the forebay-host files " + seen.get(folded(key)) + " and " + key + ", which differ only by case and would install into one file", "install from a catalog built by forebay-host catalog build");
+    seen.set(folded(key), key);
     const url = new URL(String(reference.url), origin);
     const inside = base.protocol === "https:" ? url.protocol === "https:" : url.protocol === "file:" && url.hostname === "" && url.pathname.startsWith(directory);
-    if (!KEY.test(key) || !inside || !/^[0-9a-f]{64}$/.test(reference.sha256) || !Number.isInteger(reference.size)) {
+    if (!KEY.test(key) || !inside || !SHA256.test(String(reference.sha256)) || !Number.isInteger(reference.size)) {
       fail("the catalog lists the forebay-host file " + JSON.stringify(key) + " with a name, url, sha256 or size the installer refuses", "install from a catalog built by forebay-host catalog build");
     }
     lines.push([key, url.href, reference.sha256, reference.size].join("\t"));
@@ -176,13 +188,48 @@ place_temporary() {
   TEMPORARY=''
 }
 
-fetch_verified() {
+download_verified() {
   new_temporary "$2"
   curl -fsSL -o "$TEMPORARY" "$1" || refuse "could not fetch $1" 'check the network connection, then run this again'
   if [ "$(file_size "$TEMPORARY")" != "$4" ] && [ "$4" != any ] || ! has_sha256 "$TEMPORARY" "$3"; then
     refuse "$1 does not have the SHA-256 $3 it is pinned to" 'run this again; if it repeats, the download is being altered on the way'
   fi
+}
+
+fetch_verified() {
+  download_verified "$@"
   place_temporary "$2"
+}
+
+runtime_unpacked() {
+  [ -f "$1" ] || return 1
+  { read -r unpacked_archive && read -r unpacked_executable; } < "$1" || return 1
+  [ "$unpacked_archive" = "$RUNTIME_SHA256" ] && has_sha256 "$NODE" "$unpacked_executable"
+}
+
+write_unpacked_marker() {
+  new_temporary "$1"
+  printf '%s\n%s\n' "$RUNTIME_SHA256" "$(file_sha256 "$NODE")" > "$TEMPORARY"
+  place_temporary "$1"
+}
+
+remove_other_runtime_versions() {
+  for version_directory in "$CACHE/runtimes/$RUNTIME_NAME"/*; do
+    [ -d "$version_directory" ] || continue
+    [ "${version_directory##*/}" != "$RUNTIME_VERSION" ] || continue
+    rm -rf "$version_directory" 2>/dev/null || true
+  done
+}
+
+unpack_runtime_executable() {
+  rm -f "$2"
+  rm -rf "$directory/$stem"
+  progress "fetching $RUNTIME_NAME $RUNTIME_VERSION for $PLATFORM"
+  download_verified "$RUNTIME_URL" "$directory/$archive_name" "$RUNTIME_SHA256" any
+  tar -xzf "$TEMPORARY" -C "$directory" "$1" || refuse "the $RUNTIME_NAME archive for $PLATFORM holds no $1" 'run this again; if it repeats, report the pinned archive'
+  remove_temporary
+  "$NODE" -e 0 >/dev/null 2>&1 || refuse "the $RUNTIME_NAME $RUNTIME_VERSION executable for $PLATFORM does not run on this machine" "install $RUNTIME_NAME $RUNTIME_COMPATIBLE_MAJOR or newer, then run this again"
+  write_unpacked_marker "$2"
 }
 
 acquire_runtime() {
@@ -191,19 +238,10 @@ acquire_runtime() {
   directory="$CACHE/runtimes/$RUNTIME_NAME/$RUNTIME_VERSION/$PLATFORM"
   archive_name=${RUNTIME_URL##*/}
   stem=${archive_name%.tar.gz}
-  archive="$directory/$archive_name"
   NODE="$directory/$stem/bin/node"
   mkdir -p "$directory"
-  if ! has_sha256 "$archive" "$RUNTIME_SHA256"; then
-    progress "fetching $RUNTIME_NAME $RUNTIME_VERSION for $PLATFORM"
-    fetch_verified "$RUNTIME_URL" "$archive" "$RUNTIME_SHA256" any
-    rm -f "$directory/$UNPACKED_MARKER"
-  fi
-  if [ ! -x "$NODE" ] || [ "$(cat "$directory/$UNPACKED_MARKER" 2>/dev/null)" != "$RUNTIME_SHA256" ]; then
-    rm -rf "$directory/$stem" "$directory/$UNPACKED_MARKER"
-    tar -xzf "$archive" -C "$directory"
-    printf '%s\n' "$RUNTIME_SHA256" > "$directory/$UNPACKED_MARKER"
-  fi
+  runtime_unpacked "$directory/$UNPACKED_MARKER" || unpack_runtime_executable "$stem/bin/node" "$directory/$UNPACKED_MARKER"
+  remove_other_runtime_versions
 }
 
 read_catalog_index() {
@@ -215,7 +253,7 @@ read_catalog_index() {
 
 fetch_host() {
   read_catalog_index
-  listing=$(printf '%s\n' "$INDEX" | "$NODE" -e "$LIST_HOST_FILES" -- "$CATALOG")
+  listing=$(printf '%s\n' "$INDEX" | "$NODE" -e "$LIST_HOST_FILES" -- "$CATALOG" "$FILE_KEY_PATTERN" "$VERSION_PATTERN" "$SHA256_PATTERN")
   newline='
 '
   tab=$(printf '\t')
