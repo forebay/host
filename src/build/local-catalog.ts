@@ -1,5 +1,6 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { INSTALL_MARKER } from "../cache/install-marker.js";
 import { isPlatformKey } from "../cache/platform-key.js";
 import { sha256Of } from "../cache/sha256.js";
 import { acceptsFileKey, acceptsItemId, acceptsVersion } from "../catalog/accepts.js";
@@ -22,6 +23,11 @@ function labelOf(input: CatalogInput): string {
   return `${input.output.id}@${input.output.version}${input.platform === undefined ? "" : ` for ${input.platform}`}`;
 }
 
+/** @implNote Compared without case, as the installer compares it, since Windows and macOS file systems would let one replace the other. */
+function isInstallMarker(key: string): boolean {
+  return key.toLowerCase() === INSTALL_MARKER.toLowerCase();
+}
+
 function checkInput(input: CatalogInput): void {
   const { id, version, files } = input.output;
   if (!acceptsItemId(id)) throw new BuildRefusal(`${JSON.stringify(id)} is not an id a catalog accepts`, "use lowercase letters and digits joined by single hyphens");
@@ -31,6 +37,8 @@ function checkInput(input: CatalogInput): void {
   }
   const refusedKey = Object.keys(files).find((key) => !acceptsFileKey(key));
   if (refusedKey !== undefined) throw new BuildRefusal(`${labelOf(input)} lists the file ${JSON.stringify(refusedKey)}, which a catalog refuses`, "give every file a relative path with / separators and no . or .. segment");
+  const markerKey = Object.keys(files).find(isInstallMarker);
+  if (markerKey !== undefined) throw new BuildRefusal(`${labelOf(input)} lists the file ${markerKey}, which the cache would take for its completion marker ${INSTALL_MARKER}`, "rename the file");
 }
 
 function slotOf(input: CatalogInput): string {

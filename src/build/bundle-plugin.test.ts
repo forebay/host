@@ -1,22 +1,23 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { importedSpecifiers, pluginRepository } from "../__fixtures__/plugin-repository.js";
+import { evaluatedInNode, pluginRepository } from "../__fixtures__/plugin-repository.js";
 import { startGreeterHost } from "../__fixtures__/greeter-host.js";
 import { directoryBundles } from "../plugins/bundle-source.js";
 import type { RunningHost } from "../start.js";
 import { callBinding } from "../ui/bindings.js";
 import { BuildRefusal } from "./build-refusal.js";
-import { bundlePlugin } from "./bundle-plugin.js";
+import { bundlePlugin, bundlePluginWith } from "./bundle-plugin.js";
+
+const ONLY_KOFFI = ["koffi"];
 
 let base: string;
 let running: RunningHost | undefined;
 
 function nonBuiltins(specifiers: string[]): string[] {
-  return specifiers.filter((specifier) => !specifier.startsWith("node:"));
+  return specifiers.filter((specifier) => !isBuiltin(specifier));
 }
 
 async function refusalOf(work: Promise<unknown>): Promise<BuildRefusal> {
@@ -36,31 +37,81 @@ afterEach(async () => {
 });
 
 describe("bundlePlugin", () => {
-  it("writes one file importing only node builtins, beside a copy of plugin.json", async () => {
+  it("writes one file importing only node builtins, a module marker beside a .js entry, and a copy of plugin.json", async () => {
     const repository = pluginRepository(join(base, "repository"), "greeter");
     const out = join(base, "out");
-    const output = await bundlePlugin(repository, out);
-    expect(output).toEqual({ id: "greeter", version: "1.0.0", files: { "index.mjs": join(out, "index.mjs"), "plugin.json": join(out, "plugin.json") } });
-    expect(readdirSync(out).sort()).toEqual(["index.mjs", "plugin.json"]);
-    expect(nonBuiltins(importedSpecifiers(join(out, "index.mjs")))).toEqual([]);
+    const bundled = await bundlePluginWith(repository, out, ONLY_KOFFI);
+    expect(bundled.output).toEqual({
+      id: "greeter",
+      version: "1.0.0",
+      files: { "index.js": join(out, "index.js"), "package.json": join(out, "package.json"), "plugin.json": join(out, "plugin.json") },
+    });
+    expect(readdirSync(out).sort()).toEqual(["index.js", "package.json", "plugin.json"]);
+    expect(JSON.parse(readFileSync(join(out, "package.json"), "utf8"))).toEqual({ type: "module" });
+    expect(bundled.imports.length).toBeGreaterThan(0);
+    expect(nonBuiltins(bundled.imports)).toEqual([]);
     expect(readFileSync(join(out, "plugin.json"), "utf8")).toBe(readFileSync(join(repository, "plugin.json"), "utf8"));
+  });
+
+  it("writes no module marker beside an .mjs entry", async () => {
+    const out = join(base, "out");
+    const output = await bundlePlugin(pluginRepository(join(base, "repository"), "greeter", { manifest: { entry: "index.mjs" } }), out);
+    expect(Object.keys(output.files).sort()).toEqual(["index.mjs", "plugin.json"]);
+    expect(readdirSync(out).sort()).toEqual(["index.mjs", "plugin.json"]);
+  });
+
+  it("puts the module marker beside an entry in a subdirectory", async () => {
+    const out = join(base, "out");
+    const output = await bundlePlugin(pluginRepository(join(base, "repository"), "greeter", { manifest: { entry: "dist/index.js" } }), out);
+    expect(Object.keys(output.files).sort()).toEqual(["dist/index.js", "dist/package.json", "plugin.json"]);
   });
 
   it("leaves koffi to be resolved where the bundle runs and inlines everything else", async () => {
     const repository = pluginRepository(join(base, "repository"), "greeter", {
       sources: { "src/index.ts": 'import koffi from "koffi";\nimport "inlined-dependency";\nexport const loaded = typeof koffi;\nexport { default } from "./plugin.js";\n' },
     });
-    await bundlePlugin(repository, join(base, "out"));
-    expect(nonBuiltins(importedSpecifiers(join(base, "out", "index.mjs")))).toEqual(["koffi"]);
+    expect(nonBuiltins((await bundlePluginWith(repository, join(base, "out"), ONLY_KOFFI)).imports)).toEqual(["koffi"]);
+  });
+
+  it("refuses a bundle that would require a package other than koffi at run time", async () => {
+    const repository = pluginRepository(join(base, "repository"), "greeter", {
+      sources: {
+        "src/index.ts": 'import "left-external";\nexport { default } from "./plugin.js";\n',
+        "node_modules/left-external/package.json": JSON.stringify({ name: "left-external", main: "index.js" }),
+        "node_modules/left-external/index.js": "module.exports = {};\n",
+      },
+    });
+    const refusal = await refusalOf(bundlePluginWith(repository, join(base, "out"), [...ONLY_KOFFI, "left-external"]));
+    expect(refusal.detail).toContain("left-external");
   });
 
   it("loads in a plain Node process, where inlined CommonJS has no global require", async () => {
     await bundlePlugin(pluginRepository(join(base, "repository"), "greeter"), join(base, "out"));
-    const runner = join(base, "runner.mjs");
-    writeFileSync(runner, `const loaded = await import(${JSON.stringify(pathToFileURL(join(base, "out", "index.mjs")).href)});
-process.stdout.write(typeof loaded.default.activate);
-`);
-    expect(execFileSync(process.execPath, [runner], { encoding: "utf8" })).toBe("function");
+    expect(evaluatedInNode(join(base, "out", "index.js"), "typeof loaded.default.activate", join(base, "scratch"))).toBe("function");
+  });
+
+  it("adds no require to a bundle that never requires anything", async () => {
+    const repository = pluginRepository(join(base, "repository"), "greeter", { sources: { "src/index.ts": 'export { default } from "./plugin.js";\n' } });
+    const bundled = await bundlePluginWith(repository, join(base, "out"), ONLY_KOFFI);
+    expect(bundled.imports).toEqual([]);
+    expect(readFileSync(join(base, "out", "index.js"), "utf8")).not.toContain("createRequire");
+  });
+
+  it("keeps a plugin's own top-level require beside the one inlined CommonJS needs", async () => {
+    const repository = pluginRepository(join(base, "repository"), "greeter", {
+      sources: {
+        "src/index.ts": [
+          'import { createRequire } from "node:module";',
+          'import "inlined-dependency";',
+          "const require = createRequire(import.meta.url);",
+          'export const extension = require("node:path").extname("own.ts");',
+          'export { default } from "./plugin.js";',
+          "",
+        ].join("\n"),
+      },
+    });
+    await bundlePlugin(repository, join(base, "out"));
+    expect(evaluatedInNode(join(base, "out", "index.js"), "loaded.extension + typeof loaded.default.activate", join(base, "scratch"))).toBe(".tsfunction");
   });
 
   it("bundles the source the manifest's bundle.entry names", async () => {
@@ -69,7 +120,7 @@ process.stdout.write(typeof loaded.default.activate);
       sources: { "lib/main.ts": 'export default { activate() {}, deactivate() {} };\nexport const marker = "from lib/main";\n' },
     });
     await bundlePlugin(repository, join(base, "out"));
-    expect(readFileSync(join(base, "out", "index.mjs"), "utf8")).toContain("from lib/main");
+    expect(readFileSync(join(base, "out", "index.js"), "utf8")).toContain("from lib/main");
   });
 
   it("produces a bundle the host starts and calls", async () => {
@@ -97,6 +148,12 @@ process.stdout.write(typeof loaded.default.activate);
     const repository = pluginRepository(join(base, "repository"), "greeter", { manifest: { entry: "../escaped.mjs" } });
     const refusal = await refusalOf(bundlePlugin(repository, join(base, "out")));
     expect(refusal.detail).toContain("../escaped.mjs");
+  });
+
+  it.each(["plugin.json", "Package.json", "dist/package.json"])("refuses the entry %s, which the bundle's own files would replace", async (entry) => {
+    const repository = pluginRepository(join(base, "repository"), "greeter", { manifest: { entry } });
+    const refusal = await refusalOf(bundlePlugin(repository, join(base, "out")));
+    expect(refusal.detail).toContain(entry);
   });
 
   it("refuses a repository with no source entry", async () => {

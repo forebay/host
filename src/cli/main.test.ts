@@ -53,6 +53,7 @@ describe("forebay-host", () => {
     expect(reading.ok).toBe(true);
     if (!reading.ok) return;
     expect(Object.keys(reading.catalog.items).sort()).toEqual(["forebay-host", "greeter", "koffi"]);
+    expect(Object.keys(reading.catalog.items.greeter?.versions["1.0.0"]?.files ?? {}).sort()).toEqual(["index.js", "package.json", "plugin.json"]);
     expect(Object.keys(reading.catalog.items["forebay-host"]?.versions["0.1.0"]?.files ?? {}).sort()).toEqual(["host.js", "host.json", "reconcile-worker.js"]);
     expect(Object.keys(reading.catalog.items.koffi?.versions["2.16.3"]?.platforms?.["linux-x64"]?.files ?? {}).sort()).toEqual(["build/koffi.node", "package.json"]);
   });
