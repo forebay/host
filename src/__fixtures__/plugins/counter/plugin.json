@@ -1,0 +1,7 @@
+{
+  "id": "counter",
+  "api": 1,
+  "version": "1.0.0",
+  "entry": "index.js",
+  "services": { "provides": ["counter:count"] }
+}

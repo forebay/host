@@ -20,6 +20,8 @@ export interface LoaderReport {
   home: string;
   commands: string[];
   refusedCommands: RefusedCommand[];
+  /** Whether the application starts the loader's host through its own plugin mechanism, and why not when it does not. */
+  entry: { written: true } | { written: false; detail: string };
 }
 
 /** What one install did: what it fetched, what was already in the cache as `<id>@<version>`, what it could not install, which plugins it enabled and what it did about each catalog application. */

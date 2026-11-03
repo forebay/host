@@ -1,23 +1,14 @@
 import { CommandRefusal } from "../cli/command-refusal.js";
-import { hostRunOf, openCacheSession, readRegistration, readRegistrations, startFromCache } from "../cli/cache-session.js";
-import type { CacheSession } from "../cli/cache-session.js";
-import { loaderIdentity } from "../install/loader-identity.js";
-import { readInstalledStandard } from "../loader/installed-standard.js";
+import { openCacheSession } from "../cli/cache-session.js";
 import { findOnPath } from "../loader/on-path.js";
-import type { LoaderApplication, LoaderStandard } from "../loader/standard.js";
-import { backgroundHostStarter, holdBackgroundHost, releaseBackgroundHost } from "../processes/background.js";
+import type { LoaderApplication } from "../loader/standard.js";
 import { runApplication } from "./child.js";
+import { prepareLoader, startLoaderSession } from "./session.js";
 
 export interface LaunchRequest {
   loaderId: string;
   /** Everything after the loader id, given to the application unchanged. */
   applicationArguments: string[];
-}
-
-function standardOf(session: CacheSession, loaderId: string, version: string): LoaderStandard {
-  const standard = readInstalledStandard(session.location.cache, loaderId, version);
-  if (typeof standard !== "string") return standard;
-  throw new CommandRefusal(standard, "run forebay-host install --catalog <path or url> again");
 }
 
 function applicationBinary(application: LoaderApplication, environment: Record<string, string>): string {
@@ -27,36 +18,6 @@ function applicationBinary(application: LoaderApplication, environment: Record<s
     `the ${application.label} binary ${application.binary} is not on the PATH`,
     `install ${application.label} so ${application.binary} is on the PATH, or run forebay-host install --catalog <path or url> to install it`,
   );
-}
-
-async function releaseAll(state: string, held: readonly string[]): Promise<void> {
-  for (const hostId of held) await releaseBackgroundHost(state, hostId);
-}
-
-/** Holds every background host in turn, releasing the ones already held when one cannot be. */
-async function holdAll(session: CacheSession, background: readonly string[], environment: Record<string, string>): Promise<string[]> {
-  const { cache } = session.location;
-  const { state } = session.setup.places;
-  const held: string[] = [];
-  try {
-    for (const hostId of background) {
-      await holdBackgroundHost(state, hostId, backgroundHostStarter({ cache, directory: state, hostId, environment }));
-      held.push(hostId);
-    }
-    return held;
-  } catch (error) {
-    await releaseAll(state, held);
-    throw error;
-  }
-}
-
-async function runHeld(session: CacheSession, standard: LoaderStandard, binary: string, request: LaunchRequest, environment: Record<string, string>): Promise<number> {
-  const held = await holdAll(session, standard.background, environment);
-  try {
-    return await runApplication(binary, request.applicationArguments, environment);
-  } finally {
-    await releaseAll(session.setup.places.state, held);
-  }
 }
 
 /**
@@ -72,15 +33,12 @@ async function runHeld(session: CacheSession, standard: LoaderStandard, binary: 
  */
 export async function launchCommand(request: LaunchRequest, bundleFile: string, environment: Record<string, string>): Promise<number> {
   const session = openCacheSession(bundleFile, environment);
-  const run = hostRunOf(session, request.loaderId, readRegistration(session, request.loaderId).version);
-  const standard = standardOf(session, request.loaderId, run.version);
-  const binary = applicationBinary(standard.application, environment);
-  readRegistrations(session, standard.background);
-  const identity = loaderIdentity({ id: request.loaderId, version: run.version, application: standard.application, pathCommands: standard.pathCommands, cache: session.location.cache, environment });
-  const running = await startFromCache(session, identity, run, environment);
+  const prepared = prepareLoader(session, request.loaderId);
+  const binary = applicationBinary(prepared.standard.application, environment);
+  const stop = await startLoaderSession(session, prepared, environment);
   try {
-    return await runHeld(session, standard, binary, request, environment);
+    return await runApplication(binary, request.applicationArguments, environment);
   } finally {
-    await running.stop();
+    await stop();
   }
 }

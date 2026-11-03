@@ -35,9 +35,9 @@ function fixtureHostInput(workspace: string, id: string): CatalogInput {
   return { kind: "host", output: hostDirectoryOutput(directory) };
 }
 
-/** The ecosystem catalog with the fixture loader, whose `background` names the fixture background host, and that host. */
-export function launchCatalog(workspace: string): Promise<EcosystemCatalog> {
-  return ecosystemCatalog(workspace, [fixtureHostInput(workspace, LOADER_ID), fixtureHostInput(workspace, BACKGROUND_ID)]);
+/** The ecosystem catalog with the fixture loader, whose `background` names the fixture background host, that host, and every `extra` input. */
+export function launchCatalog(workspace: string, extra: readonly CatalogInput[] = []): Promise<EcosystemCatalog> {
+  return ecosystemCatalog(workspace, [fixtureHostInput(workspace, LOADER_ID), fixtureHostInput(workspace, BACKGROUND_ID), ...extra]);
 }
 
 function placesOf(environment: Record<string, string>): HostPlaces {
@@ -60,15 +60,15 @@ function writePortableSettings(places: HostPlaces, settings: Record<string, unkn
 
 /**
  * Installs `catalog` into places under `base` the way `forebay-host install` does for a machine with
- * the fixture application, the fixture background host its loader names included, then writes
- * `settings` to the portable layer.
+ * the fixture application, the fixture background host its loader names included, with `defaults`
+ * as the plugins it enables, then writes `settings` to the portable layer.
  */
-export async function installLaunchEcosystem(base: string, catalog: EcosystemCatalog, settings: Record<string, unknown>): Promise<LaunchEcosystem> {
+export async function installLaunchEcosystem(base: string, catalog: EcosystemCatalog, settings: Record<string, unknown>, defaults: readonly string[] = [SESSION_PLUGIN]): Promise<LaunchEcosystem> {
   const environment = placesEnvironment(base);
   const places = placesOf(environment);
   const sources = [{ kind: "local" as const, path: catalog.path }];
   const fetcher = defaultFetcher();
-  await installEcosystem({ catalog: sources, places, home: forebayHostHome(places), defaults: [SESSION_PLUGIN], fetcher });
+  await installEcosystem({ catalog: sources, places, home: forebayHostHome(places), defaults: [...defaults], fetcher });
   installBootEntry(places.cache, join(places.cache, "bundles", "forebay-host", catalog.hostVersion));
   const report = { ...emptyReport(), applications: [{ id: APPLICATION_ID, state: "installed" as const }] };
   const installed = await installCatalog(sources, places.cache, report);

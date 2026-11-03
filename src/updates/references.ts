@@ -99,3 +99,13 @@ export function readHostReferences(state: string, hostId: string): HostReference
   const text = readIfFile(referenceFile(state, hostId));
   return (text === undefined ? undefined : referencesOf(text)) ?? { run: {}, next: {} };
 }
+
+/**
+ * Records `version` as the one `hostId` runs of itself, keeping every other version it recorded.
+ *
+ * @implNote Keeps what the host scheduled for its next start, so recording the registered version never forgets an update already fetched.
+ */
+export function recordRunningVersion(state: string, hostId: string, version: string): void {
+  const recorded = readHostReferences(state, hostId);
+  recordReferences(state, hostId, { ...recorded, run: { ...recorded.run, [hostId]: version } });
+}

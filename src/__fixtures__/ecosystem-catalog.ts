@@ -23,7 +23,8 @@ export interface EcosystemCatalog {
   hostVersion: string;
 }
 
-async function pluginInput(workspace: string, id: string, platform?: string): Promise<CatalogInput> {
+/** Fixture plugin `id` bundled into `workspace` as a catalog input, built for `platform` alone when one is given. */
+export async function fixturePluginInput(workspace: string, id: string, platform?: string): Promise<CatalogInput> {
   const output = await bundlePlugin(pluginRepository(join(workspace, "repositories", id), id), join(workspace, "bundled", id));
   return platform === undefined ? { kind: "plugin", output } : { kind: "plugin", output, platform };
 }
@@ -61,9 +62,9 @@ export async function ecosystemCatalog(workspace: string, extra: readonly Catalo
     runtimeInput(workspace, RUNTIME_VERSION),
     runtimeInput(workspace, OLDER_RUNTIME_VERSION),
     koffiInput(workspace),
-    await pluginInput(workspace, "viewer"),
-    await pluginInput(workspace, "announcer"),
-    await pluginInput(workspace, "rival", ELSEWHERE_PLATFORM),
+    await fixturePluginInput(workspace, "viewer"),
+    await fixturePluginInput(workspace, "announcer"),
+    await fixturePluginInput(workspace, "rival", ELSEWHERE_PLATFORM),
     ...extra,
   ];
   return { path: buildLocalCatalog(inputs, join(workspace, "catalog")), hostVersion: host.version };

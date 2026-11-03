@@ -8,8 +8,14 @@ import { readBootHint } from "./boot-hint.js";
 const HOST_ENTRY = "host.js";
 const REINSTALL_FIX = "run forebay-host install --catalog <path or url> again";
 
+/** What a host bundle that is started inside the application answers: how to stop it. */
+export interface BootedSessionHost {
+  stop(): Promise<void>;
+}
+
 interface InstalledHost {
   runHostCommandLine(argv: string[]): Promise<number>;
+  runSessionHost(loaderId: string): Promise<BootedSessionHost>;
 }
 
 function hostDirectory(cache: string, hostId: string): string {
@@ -33,6 +39,10 @@ function refusalOf(error: unknown): CacheRefusal {
   return new CacheRefusal((error as Error).message, REINSTALL_FIX);
 }
 
+async function importHost(cache: string, hostId: string): Promise<InstalledHost> {
+  return (await import(pathToFileURL(verifiedHostEntry(cache, hostId)).href)) as InstalledHost;
+}
+
 /**
  * Runs the host bundle version `hostId`'s boot hint names, in `cache`, with the arguments after the
  * host id, and answers its exit code. A hint that is missing or unreadable, or a bundle whose files
@@ -52,4 +62,21 @@ export async function bootHost(cache: string, argv: string[], printRefusal: (tex
   }
   const host = (await import(pathToFileURL(entry).href)) as InstalledHost;
   return host.runHostCommandLine(rest);
+}
+
+/**
+ * Starts loader `loaderId`'s host in this process through the host bundle version `hostId`'s boot
+ * hint names, in `cache`, for an application whose plugin entry lives for its whole session.
+ *
+ * @remarks A hint or bundle that would be refused by {@link bootHost} is refused here by throwing
+ * the same {@link CacheRefusal}.
+ */
+export async function bootSessionHost(cache: string, hostId: string, loaderId: string): Promise<BootedSessionHost> {
+  let host: InstalledHost;
+  try {
+    host = await importHost(cache, hostId);
+  } catch (error) {
+    throw refusalOf(error);
+  }
+  return host.runSessionHost(loaderId);
 }

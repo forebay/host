@@ -62,3 +62,6 @@ export { operate } from "./methods/operate.js";
 export type { Operation } from "./methods/operate.js";
 export { installMethodProviders } from "./methods/providers.js";
 export type { MethodProvider } from "./methods/providers.js";
+export { writeApplicationEntry } from "./entries/apply-entry.js";
+export type { ApplicationEntry } from "./entries/apply-entry.js";
+export type { EntryChange, EntryLoader } from "./entries/entry-change.js";
