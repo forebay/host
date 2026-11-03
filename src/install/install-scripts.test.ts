@@ -103,11 +103,16 @@ function renderTestScript(directory: string): string {
   return path;
 }
 
-function linkTools(directory: string, tools: string[]): string {
+function linkInto(directory: string, name: string, target: string): void {
   mkdirSync(directory, { recursive: true });
+  const link = join(directory, name);
+  if (!existsSync(link)) symlinkSync(target, link);
+}
+
+function linkTools(directory: string, tools: string[]): string {
   for (const tool of tools) {
     const found = whichOf(tool);
-    if (found !== undefined) symlinkSync(found, join(directory, tool));
+    if (found !== undefined) linkInto(directory, tool, found);
   }
   return directory;
 }
@@ -125,12 +130,11 @@ interface PathChoice {
 /** @implNote No PATH entry of the parent's own, so neither a node on it nor the user's tools leak into the child. */
 function pathFor(choice: PathChoice): string {
   if (IS_WINDOWS) return choice.withNode === true ? [windowsSystemPath(), dirname(process.execPath)].join(delimiter) : windowsSystemPath();
-  const tools = POSIX_TOOLS.filter((tool) => choice.withoutCurl !== true || tool !== "curl");
-  const directories = [linkTools(join(base, "tools"), tools)];
+  const toolDirectory = choice.withoutCurl === true ? join(base, "tools-without-curl") : join(base, "tools");
+  const directories = [linkTools(toolDirectory, POSIX_TOOLS.filter((tool) => choice.withoutCurl !== true || tool !== "curl"))];
   if (choice.withNode === true) {
     const nodeDirectory = join(base, "node-on-path");
-    mkdirSync(nodeDirectory, { recursive: true });
-    symlinkSync(process.execPath, join(nodeDirectory, "node"));
+    linkInto(nodeDirectory, "node", process.execPath);
     directories.push(nodeDirectory);
   }
   return directories.join(delimiter);
