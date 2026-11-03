@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { openLibrary, parseDeclaration, servicesOf } from "@weivel/typescript/host";
+import { currentPlatformKey, openLibrary, parseDeclaration, servicesOf } from "@weivel/typescript/host";
 import type { LibraryDeclaration, LoadedLibrary } from "@weivel/typescript/host";
+import { runtimeBinaryName } from "./cached-runtime.js";
 import type {
   ChangesService,
   CommandsService,
@@ -35,8 +36,8 @@ export interface Runtime {
 /** Where `cmake --build --config Release` leaves the runtime library on this OS, as `siblings/library` is laid out. */
 function sharedLibraryPath(root: string): string {
   const build = join(root, "siblings", "library", "build", "bin");
-  if (process.platform === "win32") return join(build, "Release", "runtime.dll");
-  return join(build, process.platform === "darwin" ? "libruntime.dylib" : "libruntime.so");
+  const binary = runtimeBinaryName(currentPlatformKey());
+  return process.platform === "win32" ? join(build, "Release", binary) : join(build, binary);
 }
 
 export function siblingRuntime(root: string): RuntimeSource {
