@@ -4,57 +4,121 @@
   "title": "Catalog index",
   "description": "Lists each item's versions with file URLs, hashes and kinds. A marketplace is another catalog index.",
   "type": "object",
-  "required": ["format", "items"],
+  "required": [
+    "format",
+    "items"
+  ],
   "properties": {
-    "format": { "const": 1 },
+    "format": {
+      "const": 1
+    },
     "items": {
       "type": "object",
-      "additionalProperties": { "$ref": "#/definitions/item" }
+      "additionalProperties": {
+        "$ref": "#/definitions/item"
+      },
+      "propertyNames": {
+        "pattern": "^(?!(?:constructor|con|prn|aux|nul|com[1-9]|lpt[1-9])(?![\\s\\S]))[a-z0-9]+(-[a-z0-9]+)*(?![\\s\\S])"
+      }
     }
   },
   "definitions": {
     "item": {
       "type": "object",
-      "required": ["kind", "versions", "latest"],
+      "required": [
+        "kind",
+        "versions",
+        "latest"
+      ],
       "properties": {
-        "kind": { "enum": ["plugin", "host", "library"] },
+        "kind": {
+          "enum": [
+            "plugin",
+            "host",
+            "library"
+          ]
+        },
         "versions": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/definitions/version" }
+          "additionalProperties": {
+            "$ref": "#/definitions/version"
+          },
+          "propertyNames": {
+            "pattern": "^(?![\\s\\S]*\\.\\.)[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?(?![\\s\\S])"
+          }
         },
-        "latest": { "type": "string", "minLength": 1 }
+        "latest": {
+          "type": "string",
+          "pattern": "^(?![\\s\\S]*\\.\\.)[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?(?![\\s\\S])"
+        }
       }
     },
     "version": {
       "type": "object",
-      "anyOf": [{ "required": ["files"] }, { "required": ["platforms"] }],
+      "anyOf": [
+        {
+          "required": [
+            "files"
+          ]
+        },
+        {
+          "required": [
+            "platforms"
+          ]
+        }
+      ],
       "properties": {
-        "files": { "$ref": "#/definitions/files" },
+        "files": {
+          "$ref": "#/definitions/files"
+        },
         "platforms": {
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "required": ["files"],
+            "required": [
+              "files"
+            ],
             "properties": {
-              "files": { "$ref": "#/definitions/files" }
+              "files": {
+                "$ref": "#/definitions/files"
+              }
             }
           }
         },
-        "packages": { "type": "object" }
+        "packages": {
+          "type": "object"
+        }
       }
     },
     "files": {
       "type": "object",
-      "propertyNames": { "pattern": "^(?!/)(?!(?:[\\s\\S]*/)?\\.\\.(?:/|(?![\\s\\S])))[^\\\\]+(?![\\s\\S])" },
-      "additionalProperties": { "$ref": "#/definitions/fileRef" }
+      "propertyNames": {
+        "pattern": "^[^/\\\\:]*[^/\\\\:. ](?:/[^/\\\\:]*[^/\\\\:. ])*(?![\\s\\S])"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/fileRef"
+      }
     },
     "fileRef": {
       "type": "object",
-      "required": ["url", "sha256", "size"],
+      "required": [
+        "url",
+        "sha256",
+        "size"
+      ],
       "properties": {
-        "url": { "type": "string", "minLength": 1 },
-        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}(?![\\s\\S])" },
-        "size": { "type": "integer", "minimum": 0 }
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     }
   }

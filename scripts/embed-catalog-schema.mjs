@@ -28,6 +28,9 @@ function inlineRuntimeHelpers(source) {
   });
 }
 
+const CATALOG_VALIDATOR_TYPE =
+  "export type CatalogValidator = ((data: unknown) => boolean) & { errors?: Array<{ instancePath: string; keyword: string; message?: string; params: Record<string, unknown>; propertyName?: string }> | null };";
+
 function validatorModule(schema) {
   const ajv = new Ajv({ strict: true, strictRequired: false, allErrors: false, code: { source: true, esm: true } });
   const standalone = inlineRuntimeHelpers(standaloneCode(ajv, ajv.compile(schema))).replace(/^"use strict";/, "");
@@ -39,10 +42,10 @@ function validatorModule(schema) {
   }
   return [
     "// @ts-nocheck",
-    `import type { ValidateFunction } from "ajv";`,
+    CATALOG_VALIDATOR_TYPE,
     body,
     `export const CATALOG_SCHEMA_ID: string = ${JSON.stringify(schema.$id)};`,
-    `export const validateCatalogIndex: ValidateFunction = ${exported[1]};`,
+    `export const validateCatalogIndex: CatalogValidator = ${exported[1]};`,
     "",
   ].join("\n");
 }
