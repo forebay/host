@@ -7,7 +7,7 @@ export interface RenderedSection {
 }
 
 export function shQuoted(value: string): string {
-  return `'${value.split("'").join("'\''")}'`;
+  return `'${value.split("'").join(String.raw`'\''`)}'`;
 }
 
 export function ps1Quoted(value: string): string {
