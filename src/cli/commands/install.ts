@@ -7,10 +7,11 @@ import { bootstrapLibraries } from "../../install/bootstrap-libraries.js";
 import type { Bootstrap } from "../../install/bootstrap-libraries.js";
 import { forebayHostHome } from "../../install/forebay-host.js";
 import { KOFFI_ID, RUNTIME_ID, verifiedRuntimeSource } from "../../install/host-libraries.js";
+import type { InstallReport } from "../../install/install-report.js";
 import { installEcosystem } from "../../install/install-ecosystem.js";
 import type { InstallOptions } from "../../install/install-ecosystem.js";
 import { ApplicationChoiceError, checkApplicationIds, parseApplicationChoices, resolveMissingApplications } from "../../install/missing-applications.js";
-import type { MissingApplicationsHost } from "../../install/missing-applications.js";
+import type { MissingApplicationsHost, MissingApplicationsRequest } from "../../install/missing-applications.js";
 import type { HostLibraries } from "../../runtime/cached-runtime.js";
 import { CommandRefusal } from "../command-refusal.js";
 import { UsageError } from "../command-line.js";
@@ -44,14 +45,26 @@ function librariesOf(bootstrap: Bootstrap): HostLibraries {
   );
 }
 
+function asUsageError(error: unknown): unknown {
+  return error instanceof ApplicationChoiceError ? new UsageError(error.message) : error;
+}
+
 function choicesOf(given: InstallArguments, catalog: Catalog): Record<string, string> {
   try {
     const choices = parseApplicationChoices(given.applications ?? []);
     checkApplicationIds(catalog, choices);
     return choices;
   } catch (error) {
-    if (error instanceof ApplicationChoiceError) throw new UsageError(error.message);
-    throw error;
+    throw asUsageError(error);
+  }
+}
+
+/** Offers the missing applications, a refused `--application` flag surfacing as a usage error rather than escaping the command line. */
+export async function resolveApplicationsForCommand(request: MissingApplicationsRequest, host: MissingApplicationsHost, report: InstallReport): Promise<void> {
+  try {
+    await resolveMissingApplications(request, host, report);
+  } catch (error) {
+    throw asUsageError(error);
   }
 }
 
@@ -92,7 +105,7 @@ export async function installCommand(
   const options: InstallOptions = { catalog: sources, places, home: forebayHostHome(places), defaults: [], requested: given.plugins, fetcher, bootstrap };
   const report = await installEcosystem(options);
   if (report.unavailable.length === 0) {
-    await resolveMissingApplications({ catalog: bootstrap.catalog, environment, choices, ask }, missingApplicationsHost(given, options, bundleFile, environment), report);
+    await resolveApplicationsForCommand({ catalog: bootstrap.catalog, environment, choices, ask }, missingApplicationsHost(given, options, bundleFile, environment), report);
   }
   output.out(JSON.stringify(report, null, 2));
   if (report.unavailable.length === 0) return;

@@ -104,10 +104,7 @@ function checkFlaggedMethod(application: LoaderApplication, method: string, offe
 
 async function chosenMethod(session: Session, application: LoaderApplication, offered: string[]): Promise<string | undefined> {
   const flagged = session.request.choices[application.id];
-  if (flagged !== undefined) {
-    checkFlaggedMethod(application, flagged, offered);
-    return flagged;
-  }
+  if (flagged !== undefined) return flagged;
   return offered.length > 0 && session.terminalAvailable ? askForMethod(session, application, offered) : undefined;
 }
 
@@ -142,21 +139,32 @@ async function installProviderStep(session: Session, providerId: string): Promis
   return result.unavailable.map(({ detail, fix }) => ({ method: providerId, detail, fix }));
 }
 
-function packageOf(step: Record<string, unknown>): { name: string; options?: object } {
-  return (step.install as { package: { name: string; options?: object } }).package;
+type PlanStep = { kind: "install-provider"; providerId: string } | { kind: "install"; name: string; options?: object };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** @implNote The runtime answers `{ "install-provider": <catalog entry> }` or `{ "install": { method, package } }`; anything else is refused rather than guessed at. */
+function readStep(step: Record<string, unknown>): PlanStep | undefined {
+  const provider = step["install-provider"];
+  if (isRecord(provider) && typeof provider.id === "string") return { kind: "install-provider", providerId: provider.id };
+  const install = step.install;
+  if (!isRecord(install) || !isRecord(install.package) || typeof install.package.name !== "string") return undefined;
+  return { kind: "install", name: install.package.name, ...(isRecord(install.package.options) ? { options: install.package.options } : {}) };
 }
 
 /** @implNote A provider that could not be installed ends the plan before its install step, which would only be refused for want of the provider. */
 async function carryOut(session: Session, application: LoaderApplication, method: string, steps: Array<Record<string, unknown>>): Promise<ApplicationReport> {
-  for (const step of steps) {
-    if (step["install-provider"] !== undefined) {
-      const providerId = (step["install-provider"] as { id: string }).id;
-      const refusals = await installProviderStep(session, providerId);
+  for (const raw of steps) {
+    const step = readStep(raw);
+    if (step === undefined) return failed(application, method, `the install plan has a step this installer cannot read: ${JSON.stringify(raw)}`, "choose another method");
+    if (step.kind === "install-provider") {
+      const refusals = await installProviderStep(session, step.providerId);
       if (refusals.length > 0) return failed(application, method, refusals[0]?.detail ?? "", refusals[0]?.fix ?? "");
       continue;
     }
-    const { name, options } = packageOf(step);
-    const answer = await operate(running(session), method, "install", name, options);
+    const answer = await operate(running(session), method, "install", step.name, step.options);
     if (!answer.ok) return failed(application, method, answer.detail, answer.fix);
   }
   return { id: application.id, state: "installed", installedThrough: method };
@@ -186,17 +194,29 @@ async function stateOfEach(session: Session, applications: LoaderApplication[]):
   return new Map(rows.map((row) => [row.id, row.state]));
 }
 
+interface Pending {
+  application: LoaderApplication;
+  offer: ApplicationOffer;
+}
+
+/** @implNote Every flag is checked against the offers before the first install, so a refused flag leaves nothing half done. */
 async function resolveAll(session: Session): Promise<ApplicationReport[]> {
   const applications = applicationsOf(session.request.catalog);
   const states = await stateOfEach(session, applications);
-  const rows: ApplicationReport[] = [];
+  const pending = new Map<string, Pending>();
   for (const application of applications) {
     const state = states.get(application.id);
-    if (state === "installed" || state === "detected") {
-      rows.push({ id: application.id, state });
-      continue;
-    }
-    rows.push(await resolveOne(session, application, offerFor(running(session), application, session.providers, session.platformKey)));
+    if (state === "installed" || state === "detected") continue;
+    const offer = offerFor(running(session), application, session.providers, session.platformKey);
+    const flagged = session.request.choices[application.id];
+    if (flagged !== undefined) checkFlaggedMethod(application, flagged, offer.offered);
+    pending.set(application.id, { application, offer });
+  }
+  const rows: ApplicationReport[] = [];
+  for (const application of applications) {
+    const waiting = pending.get(application.id);
+    const state = states.get(application.id);
+    rows.push(waiting === undefined ? { id: application.id, state: state === "detected" ? "detected" : "installed" } : await resolveOne(session, waiting.application, waiting.offer));
   }
   return rows;
 }
