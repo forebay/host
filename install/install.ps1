@@ -80,15 +80,26 @@ function Receive-File([string]$Url, [string]$Path) {
     }
 }
 
+function New-TemporaryPath([string]$Path) {
+    return "$Path.$([guid]::NewGuid().ToString('N')).part"
+}
+
+function Remove-Temporary([string]$Part) {
+    if (Test-Path -LiteralPath $Part) { Remove-Item -LiteralPath $Part -Force -ErrorAction SilentlyContinue }
+}
+
 function Receive-Verified([string]$Url, [string]$Path, [string]$Sha256, $Size) {
-    $part = "$Path.$([guid]::NewGuid().ToString('N')).part"
-    Receive-File $Url $part
-    $sizeMatches = ($null -eq $Size) -or ((Get-Item -LiteralPath $part).Length -eq [long]$Size)
-    if (-not $sizeMatches -or -not (Test-Sha256 $part $Sha256)) {
-        Remove-Item -LiteralPath $part -Force
-        Stop-Install "$Url does not have the SHA-256 $Sha256 it is pinned to" 'run this again; if it repeats, the download is being altered on the way'
+    $part = New-TemporaryPath $Path
+    try {
+        Receive-File $Url $part
+        $sizeMatches = ($null -eq $Size) -or ((Get-Item -LiteralPath $part).Length -eq [long]$Size)
+        if (-not $sizeMatches -or -not (Test-Sha256 $part $Sha256)) {
+            Stop-Install "$Url does not have the SHA-256 $Sha256 it is pinned to" 'run this again; if it repeats, the download is being altered on the way'
+        }
+        Move-Item -LiteralPath $part -Destination $Path -Force
+    } finally {
+        Remove-Temporary $part
     }
-    Move-Item -LiteralPath $part -Destination $Path -Force
 }
 
 function Find-CompatibleRuntime {
@@ -144,6 +155,10 @@ function Install-Runtime([string]$Cache, [string]$Platform) {
 }
 
 function Read-CatalogIndex([string]$Catalog) {
+    return (Read-CatalogText $Catalog).TrimStart([char]0xFEFF)
+}
+
+function Read-CatalogText([string]$Catalog) {
     if ($Catalog -match '^https://') {
         $client = New-Object System.Net.WebClient
         try { return [System.Text.Encoding]::UTF8.GetString($client.DownloadData($Catalog)) } catch { Stop-Install "could not fetch $Catalog" 'check the network connection and the url, then run this again' } finally { $client.Dispose() }
@@ -196,9 +211,13 @@ function Install-HostBundle([string]$Cache, [string]$Catalog) {
         $changed = $true
     }
     if ($changed -or -not (Test-Path -LiteralPath $marker)) {
-        $markerPart = "$marker.$([guid]::NewGuid().ToString('N')).part"
-        [System.IO.File]::WriteAllText($markerPart, (@{ files = $hashes } | ConvertTo-Json))
-        Move-Item -LiteralPath $markerPart -Destination $marker -Force
+        $markerPart = New-TemporaryPath $marker
+        try {
+            [System.IO.File]::WriteAllText($markerPart, (@{ files = $hashes } | ConvertTo-Json))
+            Move-Item -LiteralPath $markerPart -Destination $marker -Force
+        } finally {
+            Remove-Temporary $markerPart
+        }
     }
     return Join-Path $directory 'host.js'
 }
