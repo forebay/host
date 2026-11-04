@@ -43,11 +43,12 @@ function runLaunch(rest: string[]): Promise<number> {
   return launchCommand({ loaderId, applicationArguments }, fileURLToPath(import.meta.url), processEnvironment());
 }
 
-function runBackground(rest: string[]): Promise<void> {
+/** @implNote An abandoned start may still hold the event loop open, so the process is exited rather than left to drain. */
+async function runBackground(rest: string[]): Promise<void> {
   const { positionals } = parseArgs({ args: rest, options: {}, allowPositionals: true });
   const [hostId] = positionals;
   if (hostId === undefined || positionals.length !== 1) throw new UsageError("background needs exactly one host id");
-  return backgroundCommand(hostId, fileURLToPath(import.meta.url), processEnvironment());
+  if ((await backgroundCommand(hostId, fileURLToPath(import.meta.url), processEnvironment())) === "abandoned") process.exit(0);
 }
 
 function runHook(rest: string[], output: CommandLineOutput): Promise<void> {
