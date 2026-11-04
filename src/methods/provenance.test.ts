@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
 import { installFakeApplication } from "../__fixtures__/fake-application.js";
 import { startFixtureHost } from "../__fixtures__/running-host.js";
@@ -25,7 +25,13 @@ import type { RunningHost } from "../start.js";
 import { detectThroughMethods } from "./detect.js";
 import { operate } from "./operate.js";
 
+vi.mock("./operate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./operate.js")>();
+  return { ...actual, operate: vi.fn(actual.operate) };
+});
+
 const PROVIDER_ID = "fake-install-method";
+const SETTLE_MILLISECONDS = 100;
 const BINARY = "claude-binary-absent";
 const PACKAGES = { fake: "claude-pkg" };
 const LOADER_ID = "claude-loader";
@@ -215,10 +221,16 @@ describe("updating and removing an application", () => {
   it("never removes the application when its loader is removed", async () => {
     const catalog = await catalogWithProvider();
     await installApplication(catalog, { claude: "fake" });
+    expect(recordedProvenance()).toMatchObject({ method: "fake", package: "claude-pkg" });
+    vi.mocked(operate).mockClear();
+    starts = [];
 
     const removal = hostsApi(runtime, places, environment).remove(LOADER_ID);
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MILLISECONDS));
 
     expect(removal.forgotten).toBe(true);
+    expect(vi.mocked(operate).mock.calls.filter(([, , verb]) => verb === "remove")).toEqual([]);
+    expect(starts).toEqual([]);
     expect(await storeVersion()).toBe("1.0.0");
   });
 });
