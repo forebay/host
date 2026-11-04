@@ -182,16 +182,28 @@ export function writeHolders(state: string, hostId: string, record: HoldersRecor
   }
 }
 
+/** A process saying it is alive: its pid, when it last said so in epoch milliseconds, and how often it says so. */
+export interface AliveStamp {
+  pid: number | null;
+  aliveAt: number | null;
+  checkMilliseconds: number | null;
+}
+
 /**
- * Whether the host `record` names is running: its pid is alive and it said so within three of its
- * checks.
+ * Whether the process `stamp` names is still running: its pid is alive and it said so within three
+ * of its checks.
  *
- * @implNote The stamp is what tells a running host from an unrelated process that was given its pid
+ * @implNote The stamp is what tells a running process from an unrelated one that was given its pid
  * after it died, which a pid alone cannot; before its first check the default interval applies.
  */
+export function isStampFresh(stamp: AliveStamp, now: number = Date.now()): boolean {
+  if (stamp.pid === null || stamp.aliveAt === null || !isProcessAlive(stamp.pid)) return false;
+  return now - stamp.aliveAt <= MISSED_CHECKS_BEFORE_DEAD * (stamp.checkMilliseconds ?? DEFAULT_HOLDER_CHECK_MILLISECONDS);
+}
+
+/** Whether the host `record` names is running, by its stamp. */
 export function isHostRunning(record: HoldersRecord, now: number = Date.now()): boolean {
-  if (record.pid === null || record.aliveAt === null || !isProcessAlive(record.pid)) return false;
-  return now - record.aliveAt <= MISSED_CHECKS_BEFORE_DEAD * (record.checkMilliseconds ?? DEFAULT_HOLDER_CHECK_MILLISECONDS);
+  return isStampFresh(record, now);
 }
 
 /** The holders of `record` whose process is still alive. */

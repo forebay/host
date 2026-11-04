@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readBootHint } from "../boot/boot-hint.js";
 import { CacheRefusal } from "../cache/cache-refusal.js";
 import type { Catalog } from "../catalog/catalog.js";
 import { readHostReferences, recordReferences } from "../updates/references.js";
@@ -54,6 +55,18 @@ describe("hostLibraryReferences", () => {
     recordReferences(state, HOST, { run: {}, next: { viewer: "2.0.0" } });
     expect(hostLibraryReferences(resolution({ runtime: "0.1.0", koffi: "2.0.0" })).next).toEqual({ viewer: "2.0.0" });
     expect(readHostReferences(state, HOST).next).toEqual({ viewer: "2.0.0" });
+  });
+
+  it("hints the host version scheduled for the next start only once it is installed intact", () => {
+    recordReferences(state, HOST, { run: {}, next: { [HOST]: "2.0.0" } });
+    hostLibraryReferences(resolution({ runtime: "0.1.0", koffi: "2.0.0" }));
+    expect(readBootHint(cache, HOST)?.host).toBe("1.0.0");
+
+    const directory = join(cache, "bundles", HOST, "2.0.0");
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, ".installed.json"), JSON.stringify({ files: {} }));
+    hostLibraryReferences(resolution({ runtime: "0.1.0", koffi: "2.0.0" }));
+    expect(readBootHint(cache, HOST)?.host).toBe("2.0.0");
   });
 });
 

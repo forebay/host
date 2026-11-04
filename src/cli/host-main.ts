@@ -20,11 +20,10 @@ const USAGE = [
   "usage:",
   "  forebay-host install --catalog <path or url> [--plugin <id>]... [--application <id>=<method|skip>]...",
   "  forebay-host status",
-  "  forebay-host launch <loader-id> [--] [arguments for the application]...",
+  "  forebay-host launch <loader-id> [arguments for the application]...",
   "  forebay-host background <host-id>",
   "  forebay-host hook <loader-id> <event>",
 ].join("\n");
-const ARGUMENT_SEPARATOR = "--";
 
 function runInstall(rest: string[], output: CommandLineOutput): Promise<void> {
   const { values } = parseArgs({ args: rest, options: { catalog: { type: "string" }, plugin: { type: "string", multiple: true }, application: { type: "string", multiple: true } } });
@@ -37,19 +36,19 @@ function runStatus(rest: string[], output: CommandLineOutput): Promise<void> {
   return statusCommand(fileURLToPath(import.meta.url), processEnvironment(), output);
 }
 
-/** @implNote Read by hand, never by `parseArgs`, since every argument after the loader id is the application's, flags included. */
+/** @implNote Read by hand, never by `parseArgs`, since every argument after the loader id is the application's, flags and a leading `--` included. */
 function runLaunch(rest: string[]): Promise<number> {
-  const [loaderId, ...given] = rest;
+  const [loaderId, ...applicationArguments] = rest;
   if (loaderId === undefined || loaderId === "") throw new UsageError("launch needs the loader id");
-  const applicationArguments = given[0] === ARGUMENT_SEPARATOR ? given.slice(1) : given;
   return launchCommand({ loaderId, applicationArguments }, fileURLToPath(import.meta.url), processEnvironment());
 }
 
-function runBackground(rest: string[]): Promise<void> {
+/** @implNote An abandoned start may still hold the event loop open, so the process is exited rather than left to drain. */
+async function runBackground(rest: string[]): Promise<void> {
   const { positionals } = parseArgs({ args: rest, options: {}, allowPositionals: true });
   const [hostId] = positionals;
   if (hostId === undefined || positionals.length !== 1) throw new UsageError("background needs exactly one host id");
-  return backgroundCommand(hostId, fileURLToPath(import.meta.url), processEnvironment());
+  if ((await backgroundCommand(hostId, fileURLToPath(import.meta.url), processEnvironment())) === "abandoned") process.exit(0);
 }
 
 function runHook(rest: string[], output: CommandLineOutput): Promise<void> {

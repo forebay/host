@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
 import { userPathEntriesUnder } from "../__fixtures__/user-path.js";
+import { recordBootExecutable } from "../boot/boot-executable.js";
 import { buildLocalCatalog } from "../build/local-catalog.js";
 import { hostDirectoryOutput } from "../build/built-directory.js";
 import { defaultFetcher } from "../cache/fetcher.js";
@@ -89,6 +90,7 @@ beforeEach(() => {
     home: userHome,
     environment: { SPISOR_HOME: join(base, "portable"), SPISOR_STATE: join(base, "state"), SPISOR_CACHE: join(base, "cache"), SPISOR_SECRETS: join(base, "secrets") },
   });
+  recordBootExecutable(places.cache, process.execPath);
 });
 
 afterEach(() => {

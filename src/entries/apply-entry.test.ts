@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
+import { recordBootExecutable } from "../boot/boot-executable.js";
 import { bootEntryFile } from "../boot/boot-install.js";
 import type { HostPlaces } from "../context/places.js";
 import { hostsApi } from "../hosts.js";
@@ -69,6 +70,7 @@ beforeEach(() => {
     environment: { SPISOR_HOME: join(base, "portable"), SPISOR_STATE: join(base, "state"), SPISOR_CACHE: join(base, "cache"), SPISOR_SECRETS: join(base, "secrets") },
   });
   mkdirSync(places.state, { recursive: true });
+  recordBootExecutable(places.cache, process.execPath);
 });
 
 afterEach(() => {

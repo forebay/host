@@ -18,6 +18,7 @@ function plan(extra: Partial<UpdatePlan>): UpdatePlan {
     transport: { get: async () => ({ status: 200, body: catalog.index }) },
     fetcher: { fetch: async () => new Uint8Array() },
     enabled: [{ id: "a" }],
+    hosts: [],
     hostId: "test-host",
     run: {},
     problems: () => [],

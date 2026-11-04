@@ -6,12 +6,16 @@ import { isStrictlyInside } from "../cache/strictly-inside.js";
 import { abandonedBundles, abandonedLibraries } from "./abandoned.js";
 import { installedVersions } from "./installed.js";
 import { readReferences } from "./references.js";
+import { liveRuns } from "./run-records.js";
 import { newestVersion } from "./semver.js";
 
 function referencedVersions(cache: string, state: string): Set<string> {
   const referenced = new Set<string>(hintedVersions(cache));
   for (const { run, next, rollback } of readReferences(state)) {
     for (const [id, version] of [...Object.entries(run), ...Object.entries(next), ...Object.entries(rollback ?? {})]) referenced.add(`${id}@${version}`);
+  }
+  for (const run of liveRuns(state)) {
+    for (const [id, version] of Object.entries(run)) referenced.add(`${id}@${version}`);
   }
   return referenced;
 }
@@ -70,7 +74,8 @@ function sweepBundles(cache: string, referenced: Set<string>, now: number): stri
 
 /**
  * Deletes every installed bundle version, and every library version per platform, that no host's
- * reference file names, as run, as scheduled for its next start or as kept for rollback, nor any boot hint names for the
+ * reference file names, as run, as scheduled for its next start or as kept for rollback, no live
+ * start's run record names (a dead one is pruned first), nor any boot hint names for the
  * start after (a command shim runs through the hint, so what it names must outlive any sweep), keeping each id's newest installed
  * version as the rollback.
  *

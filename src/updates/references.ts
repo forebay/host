@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { isStrictlyInside } from "../cache/strictly-inside.js";
 import { isRecord } from "../plugins/is-record.js";
+import { removeRunRecords } from "./run-records.js";
 
 const REFERENCE_EXTENSION = ".json";
 
@@ -79,9 +80,10 @@ export function recordReferences(state: string, hostId: string, references: Host
   }
 }
 
-/** Deletes the file `hostId` recorded its versions in; a host that recorded none is left as it is. */
+/** Deletes the file `hostId` recorded its versions in and every run record of its starts; a host that recorded none is left as it is. */
 export function removeHostReferences(state: string, hostId: string): void {
   rmSync(referenceFile(state, hostId), { force: true });
+  removeRunRecords(state, hostId);
 }
 
 /** Every host's recorded versions, ordered by host; a file that is not at least two maps of versions is skipped. */

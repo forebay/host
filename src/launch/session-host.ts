@@ -35,9 +35,9 @@ export function exitStopper(stop: () => Promise<void>, writeError: (text: string
  */
 export async function sessionHostCommand(loaderId: string, bundleFile: string, environment: Record<string, string>): Promise<SessionHost> {
   const session = openCacheSession(bundleFile, environment);
-  const stopSession = await startLoaderSession(session, prepareLoader(session, loaderId), environment);
+  const loaderSession = await startLoaderSession(session, prepareLoader(session, loaderId), environment);
   let stopping: Promise<void> | undefined;
-  const stop = () => (stopping ??= stopSession());
+  const stop = () => (stopping ??= loaderSession.stop());
   const stopOnExit = exitStopper(stop, (text) => process.stderr.write(text));
   process.once("exit", stopOnExit);
   return {

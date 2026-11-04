@@ -20,9 +20,10 @@ function pathDirectories(environment: Record<string, string>, platform: NodeJS.P
   return (variable(environment, "PATH", platform) ?? "").split(separator).filter((directory) => directory !== "");
 }
 
+/** @implNote The bare name comes last, so an extensionless npm shell script never wins over the `.cmd` beside it that Windows can run. */
 function windowsNames(binary: string, environment: Record<string, string>): string[] {
   const extensions = (variable(environment, "PATHEXT", "win32") || DEFAULT_PATHEXT).split(";").filter((extension) => extension !== "");
-  return [binary, ...extensions.map((extension) => binary + extension)].map((name) => name.toLowerCase());
+  return [...extensions.map((extension) => binary + extension), binary].map((name) => name.toLowerCase());
 }
 
 function entriesOf(directory: string): string[] {
@@ -42,24 +43,28 @@ function isRegularFile(path: string, requireExecuteBit: boolean): boolean {
   }
 }
 
-function matchesIn(directory: string, accepts: (entry: string) => boolean, requireExecuteBit: boolean): string | undefined {
-  const entry = entriesOf(directory).find((name) => accepts(name) && isRegularFile(join(directory, name), requireExecuteBit));
-  return entry === undefined ? undefined : join(directory, entry);
+function matchesIn(directory: string, accepted: readonly string[], spelling: (entry: string) => string, requireExecuteBit: boolean): string | undefined {
+  const entries = entriesOf(directory);
+  for (const wanted of accepted) {
+    const entry = entries.find((name) => spelling(name) === wanted && isRegularFile(join(directory, name), requireExecuteBit));
+    if (entry !== undefined) return join(directory, entry);
+  }
+  return undefined;
 }
 
 /**
  * The executable a bare command name resolves to on PATH, or undefined.
  *
  * @implNote Reads directories and stats files only and never launches anything. Windows matches
- * the name against the bare name and each `PATHEXT` extension case-insensitively; POSIX requires a
- * regular file with any execute bit. `platform` is a parameter so both branches run on any OS.
+ * the name with each `PATHEXT` extension in its order, then the bare name, case-insensitively; POSIX
+ * requires a regular file with any execute bit. `platform` is a parameter so both branches run on any OS.
  */
 export function findOnPath(binary: string, environment: Record<string, string>, platform: NodeJS.Platform = process.platform): string | undefined {
   const windows = isWindows(platform);
   const accepted = windows ? windowsNames(binary, environment) : [binary];
-  const accepts = (entry: string): boolean => accepted.includes(windows ? entry.toLowerCase() : entry);
+  const spelling = (entry: string): string => (windows ? entry.toLowerCase() : entry);
   for (const directory of pathDirectories(environment, platform)) {
-    const found = matchesIn(directory, accepts, !windows);
+    const found = matchesIn(directory, accepted, spelling, !windows);
     if (found !== undefined) return found;
   }
   return undefined;

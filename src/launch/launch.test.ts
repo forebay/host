@@ -1,17 +1,22 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readBootHint } from "../boot/boot-hint.js";
 import { bootEntryFile } from "../boot/boot-install.js";
+import { openCacheSession } from "../cli/cache-session.js";
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
 import type { EcosystemCatalog } from "../__fixtures__/ecosystem-catalog.js";
 import { fakeApplicationStart, installFakeApplication, releaseFakeApplication, SIGNALS_VARIABLE, windowsSystemVariables } from "../__fixtures__/fake-application.js";
 import type { FakeApplicationStart } from "../__fixtures__/fake-application.js";
 import { APPLICATION_ID, BACKGROUND_ID, installLaunchEcosystem, launchCatalog, LOADER_ID } from "../__fixtures__/launch-ecosystem.js";
 import type { LaunchEcosystem } from "../__fixtures__/launch-ecosystem.js";
+import type { Catalog } from "../catalog/catalog.js";
+import { hostsApi } from "../hosts.js";
+import { forebayHostHome } from "../install/forebay-host.js";
+import { emptyReport } from "../install/install-report.js";
 import { holdersFile, isProcessAlive, readHolders } from "../processes/holders.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
 import { readHostReferences, recordReferences, removeHostReferences } from "../updates/references.js";
@@ -54,8 +59,32 @@ function registeredVersion(id: string): unknown {
   }
 }
 
+/** Pins the loader to `version` in the portable settings, as a user holding it to a version the catalog does not list would. */
+function pinLoader(version: string): void {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    const { places } = installed();
+    runtime.settings.set({ home: forebayHostHome(places), portable: places.portable, key: `plugins.${LOADER_ID}.pin`, value: version, layer: "portable" });
+  } finally {
+    runtime.close();
+  }
+}
+
+function recordedProvenance(): unknown {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    return (runtime.registry.get({ places: installed().places, id: LOADER_ID }).registration?.application as { provenance?: unknown } | undefined)?.provenance;
+  } finally {
+    runtime.close();
+  }
+}
+
 function launcherEnvironment(path: string): Record<string, string> {
   return { ...installed().environment, PATH: path, [SIGNALS_VARIABLE]: signals, ...windowsSystemVariables() };
+}
+
+function runHook(): ReturnType<typeof spawnSync> {
+  return spawnSync(process.execPath, [bootEntryFile(installed().places.cache), "forebay-host", "hook", LOADER_ID, "session-start"], { cwd: tmpdir(), env: launcherEnvironment(join(base, "bin")), encoding: "utf8", timeout: START_TIMEOUT });
 }
 
 function launch(applicationArguments: string[], path = join(base, "bin")): Launcher {
@@ -100,6 +129,11 @@ function backgroundHeldBy(count: number): Promise<number> {
     START_TIMEOUT,
     `the background host held by ${count}`,
   );
+}
+
+/** The pid the launcher spawned for the application: the application itself, or on Windows the command shell running its wrapper. */
+function applicationChildPid(started: FakeApplicationStart): number {
+  return process.platform === "win32" ? started.parent : started.pid;
 }
 
 function gone(pid: number, milliseconds: number): Promise<true> {
@@ -185,12 +219,12 @@ afterEach(async () => {
 
 describe("forebay-host launch, through the boot entry and the real host bundle", () => {
   it("starts the background host, runs the application with its arguments, and answers its exit code, the background host stopping itself within two intervals", async () => {
-    const launcher = launch(["--", "only", "7", "--keep"]);
+    const launcher = launch(["only", "7", "--keep"]);
     const started = await applicationStarted("only");
-    const background = await backgroundHeldBy(1);
+    const background = await backgroundHeldBy(2);
 
     expect(started.argv).toEqual(["only", "7", "--keep"]);
-    expect(readHolders(state(), BACKGROUND_ID).holders).toEqual([launcher.child.pid]);
+    expect(readHolders(state(), BACKGROUND_ID).holders).toEqual([launcher.child.pid, applicationChildPid(started)]);
     expect(isProcessAlive(background)).toBe(true);
     expect(readHostReferences(state(), LOADER_ID).run[LOADER_ID]).toBe("1.0.0");
 
@@ -201,19 +235,28 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
     expect(existsSync(holdersFile(state(), BACKGROUND_ID))).toBe(false);
   });
 
+  it("hands the application every argument after the loader id unchanged, a leading -- included", async () => {
+    const launcher = launch(["--", "0", "x"]);
+    const started = await applicationStarted("--");
+
+    expect(started.argv).toEqual(["--", "0", "x"]);
+    releaseFakeApplication(signals, "--");
+    expect(await launcher.exit).toBe(0);
+  });
+
   it("shares one background process between two launchers, kept by the first's exit and stopped by the second's", async () => {
     const first = launch(["first", "0"]);
     await applicationStarted("first");
-    const background = await backgroundHeldBy(1);
+    const background = await backgroundHeldBy(2);
     const second = launch(["second", "0"]);
-    await applicationStarted("second");
-    expect(await backgroundHeldBy(2)).toBe(background);
+    const secondStarted = await applicationStarted("second");
+    expect(await backgroundHeldBy(4)).toBe(background);
 
     releaseFakeApplication(signals, "first");
     expect(await first.exit).toBe(0);
     await new Promise((resolve) => setTimeout(resolve, INTERVAL * 3));
     expect(isProcessAlive(background)).toBe(true);
-    expect(readHolders(state(), BACKGROUND_ID)).toMatchObject({ pid: background, holders: [second.child.pid] });
+    expect(readHolders(state(), BACKGROUND_ID)).toMatchObject({ pid: background, holders: [second.child.pid, applicationChildPid(secondStarted)] });
 
     releaseFakeApplication(signals, "second");
     expect(await second.exit).toBe(0);
@@ -222,10 +265,10 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
     expect(left).toEqual([]);
   });
 
-  it("leaves a background host that exits by itself within two intervals when its launcher is killed hard, and leaves the application running", async () => {
+  it.runIf(process.platform === "win32")("on Windows, where the launcher's job takes its direct child with it, leaves the application running and the background host exiting within two intervals of a hard kill", async () => {
     const launcher = launch(["orphaned", "0"]);
     const started = await applicationStarted("orphaned");
-    const background = await backgroundHeldBy(1);
+    const background = await backgroundHeldBy(2);
 
     const killedAt = Date.now();
     hardKill(launcher.child.pid as number);
@@ -233,6 +276,23 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
 
     expect(Date.now() - killedAt).toBeLessThan(INTERVAL * 2 + STOP_ALLOWANCE);
     expect(isProcessAlive(started.pid)).toBe(true);
+  });
+
+  it.skipIf(process.platform === "win32")("keeps the background host for an application whose launcher is killed hard, and stops it within two intervals of the application exiting", async () => {
+    const launcher = launch(["orphaned", "0"]);
+    const started = await applicationStarted("orphaned");
+    const background = await backgroundHeldBy(2);
+
+    hardKill(launcher.child.pid as number);
+    await new Promise((resolve) => setTimeout(resolve, INTERVAL * 3));
+    expect(isProcessAlive(started.pid)).toBe(true);
+    expect(isProcessAlive(background)).toBe(true);
+    expect(readHolders(state(), BACKGROUND_ID)).toMatchObject({ pid: background, holders: [applicationChildPid(started)] });
+
+    const releasedAt = Date.now();
+    releaseFakeApplication(signals, "orphaned");
+    await gone(background, INTERVAL * 2 + STOP_ALLOWANCE);
+    expect(Date.now() - releasedAt).toBeLessThan(INTERVAL * 2 + STOP_ALLOWANCE);
   });
 
   it("refuses an application that is not on the PATH, leaving nothing held or running", async () => {
@@ -247,6 +307,7 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
   it("runs the loader version its references schedule, keeping the one it ran for rollback until a later start", async () => {
     const bundles = join(installed().places.cache, "bundles", LOADER_ID);
     cpSync(join(bundles, "1.0.0"), join(bundles, "2.0.0"), { recursive: true });
+    pinLoader("2.0.0");
     recordReferences(state(), LOADER_ID, { run: { [LOADER_ID]: "1.0.0" }, next: { [LOADER_ID]: "2.0.0" } });
     removeHostReferences(state(), "forebay-host");
 
@@ -278,13 +339,14 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
   it("keeps the version a launch switched to when a later hook records the loader, so a sweep never deletes what launch runs", async () => {
     const bundles = join(installed().places.cache, "bundles", LOADER_ID);
     cpSync(join(bundles, "1.0.0"), join(bundles, "2.0.0"), { recursive: true });
+    pinLoader("2.0.0");
     recordReferences(state(), LOADER_ID, { run: { [LOADER_ID]: "1.0.0" }, next: { [LOADER_ID]: "2.0.0" } });
     const switching = launch(["switched", "0"]);
     await applicationStarted("switched");
     releaseFakeApplication(signals, "switched");
     expect(await switching.exit).toBe(0);
 
-    const hook = spawnSync(process.execPath, [bootEntryFile(installed().places.cache), "forebay-host", "hook", LOADER_ID, "session-start"], { cwd: tmpdir(), env: launcherEnvironment(join(base, "bin")), encoding: "utf8", timeout: START_TIMEOUT });
+    const hook = runHook();
     expect({ status: hook.status, stdout: hook.stdout, stderr: hook.stderr }).toEqual({ status: 0, stdout: "", stderr: "" });
 
     expect(readHostReferences(state(), LOADER_ID).run[LOADER_ID]).toBe("2.0.0");
@@ -293,10 +355,44 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
     expect(existsSync(join(bundles, "2.0.0"))).toBe(true);
   });
 
+  it("keeps the application's provenance across a launch and a hook, so the application is still updated through its recorded method", async () => {
+    ecosystem = await installLaunchEcosystem(base, catalog, { "processes.holderCheckMilliseconds": INTERVAL }, undefined, { method: "fake", package: "fixture-pkg" });
+    const installedProvenance = recordedProvenance();
+    expect(installedProvenance).toMatchObject({ method: "fake", package: "fixture-pkg" });
+
+    const launcher = launch(["provenance", "0"]);
+    await applicationStarted("provenance");
+    releaseFakeApplication(signals, "provenance");
+    expect(await launcher.exit).toBe(0);
+    expect(runHook().status).toBe(0);
+
+    expect(recordedProvenance()).toEqual(installedProvenance);
+    const reached = new Error("the recorded method's provider was reached");
+    const route = { host: { start: async (): Promise<never> => Promise.reject(reached), installProvider: async () => emptyReport() }, catalog: { items: {} } as unknown as Catalog };
+    const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+    try {
+      await expect(hostsApi(runtime, installed().places, installed().environment).updateApplication(LOADER_ID, route)).rejects.toBe(reached);
+    } finally {
+      runtime.close();
+    }
+  });
+
+  it("writes the boot entry only from the forebay-host version the boot hint names, so an older session never puts its own back", () => {
+    const { cache } = installed().places;
+    const hosts = join(cache, "bundles", "forebay-host");
+    cpSync(join(hosts, catalog.hostVersion), join(hosts, "0.0.1"), { recursive: true });
+    writeFileSync(join(hosts, "0.0.1", "boot.js"), "// an older boot entry\n");
+
+    openCacheSession(join(hosts, "0.0.1", "host.js"), installed().environment);
+
+    expect(readBootHint(cache, "forebay-host")?.host).toBe(catalog.hostVersion);
+    expect(readFileSync(bootEntryFile(cache))).toEqual(readFileSync(join(hosts, catalog.hostVersion, "boot.js")));
+  });
+
   it.skipIf(process.platform === "win32")("passes a SIGTERM on to the application and answers 128 plus its number", async () => {
     const launcher = launch(["terminated", "0"]);
     const started = await applicationStarted("terminated");
-    const background = await backgroundHeldBy(1);
+    const background = await backgroundHeldBy(2);
 
     launcher.child.kill("SIGTERM");
 

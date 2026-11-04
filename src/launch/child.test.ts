@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeApplicationStart, installFakeApplication, releaseFakeApplication, SIGNALS_VARIABLE, windowsSystemVariables } from "../__fixtures__/fake-application.js";
 import { findOnPath } from "../loader/on-path.js";
 import { isProcessAlive } from "../processes/holders.js";
-import { runApplication } from "./child.js";
+import { relayStopSignals, runApplication } from "./child.js";
 import { commandShellInvocation } from "./windows-command.js";
 
 const BINARY = "fixture-app";
@@ -74,6 +74,30 @@ describe("runApplication", () => {
 
   it("refuses an application that cannot be started, with what to do", async () => {
     await expect(runApplication(join(base, "absent", process.platform === "win32" ? "missing-app.exe" : "missing-app"), [], environment)).rejects.toMatchObject({ fix: expect.stringContaining("install") });
+  });
+});
+
+describe("relayStopSignals", () => {
+  it("passes on SIGTERM alone on POSIX, holding SIGINT and SIGHUP the application already receives from its terminal", () => {
+    const forwarded: string[] = [];
+    const remove = relayStopSignals((signal) => forwarded.push(signal), "linux");
+    try {
+      for (const signal of ["SIGINT", "SIGHUP", "SIGTERM"] as const) process.emit(signal, signal);
+    } finally {
+      remove();
+    }
+    expect(forwarded).toEqual(["SIGTERM"]);
+  });
+
+  it("passes nothing on on Windows, whose console signals every attached process itself", () => {
+    const forwarded: string[] = [];
+    const remove = relayStopSignals((signal) => forwarded.push(signal), "win32");
+    try {
+      for (const signal of ["SIGINT", "SIGHUP", "SIGTERM"] as const) process.emit(signal, signal);
+    } finally {
+      remove();
+    }
+    expect(forwarded).toEqual([]);
   });
 });
 

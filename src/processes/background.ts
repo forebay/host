@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { bootExecutable } from "../boot/boot-executable.js";
 import { bootEntryFile } from "../boot/boot-install.js";
 import { FOREBAY_HOST_ID } from "../install/forebay-host.js";
 import { isHostRunning, liveHolders, readHolders, withHoldersLock, writeHolders } from "./holders.js";
@@ -14,13 +15,19 @@ export interface BackgroundStart {
   environment: Record<string, string>;
 }
 
+/** The command line that starts `forebay-host background <host-id>` through the cache's boot entry. */
+export function backgroundHostCommand(start: BackgroundStart): { command: string; arguments: string[] } {
+  return { command: bootExecutable(start.cache), arguments: [bootEntryFile(start.cache), FOREBAY_HOST_ID, "background", start.hostId] };
+}
+
 /**
- * Starts `forebay-host background <host-id>` through the cache's boot entry, detached from the
- * caller so it outlives a launcher that dies, with no terminal of its own.
+ * Starts the background host through {@link backgroundHostCommand}, detached from the caller so it
+ * outlives a launcher that dies, with no terminal of its own.
  */
 export function backgroundHostStarter(start: BackgroundStart): ProcessStarter {
   return () => {
-    const child = spawn(process.execPath, [bootEntryFile(start.cache), FOREBAY_HOST_ID, "background", start.hostId], {
+    const invocation = backgroundHostCommand(start);
+    const child = spawn(invocation.command, invocation.arguments, {
       cwd: start.directory,
       env: start.environment,
       detached: true,
