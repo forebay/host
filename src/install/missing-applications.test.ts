@@ -24,7 +24,7 @@ const APPLICATION = {
 const FILE = { url: "https://catalog.test/file", sha256: "0".repeat(64), size: 1 };
 
 function applicationItem(): CatalogItem {
-  return { kind: "host", latest: "1.0.0", versions: { "1.0.0": { files: { "host.js": FILE } } }, application: APPLICATION };
+  return { kind: "host", latest: "1.0.0", versions: { "1.0.0": { files: { "host.json": FILE } } }, application: APPLICATION };
 }
 
 function providerItem(platform: string): CatalogItem {

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -73,7 +73,8 @@ describe("forebay-host", () => {
     it("bundles the host under the loader's name and version with the standard its main module exports, and a catalog lists its application", async () => {
       const repository = loaderRepository(`export const standard = ${JSON.stringify(standard)};`);
       expect(await runCommandLine(["bundle-loader", repository, "--out", join(base, "bundled")], output)).toBe(0);
-      expect(JSON.parse(readFileSync(join(base, "bundled", "host.json"), "utf8"))).toEqual({ id: "claude-code-loader", version: "1.13.0", entry: "host.js", ...standard });
+      expect(JSON.parse(readFileSync(join(base, "bundled", "host.json"), "utf8"))).toEqual({ id: "claude-code-loader", version: "1.13.0", ...standard });
+      expect(readdirSync(join(base, "bundled"))).toEqual(["host.json"]);
       expect(await runCommandLine(["catalog", "build", "--host", join(base, "bundled"), "--out", join(base, "catalog")], output)).toBe(0);
       const catalogPath = join(base, "catalog", "catalog.json");
       const reading = readCatalog(readFileSync(catalogPath, "utf8"), pathToFileURL(catalogPath).href);

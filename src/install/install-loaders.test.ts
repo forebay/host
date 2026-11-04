@@ -38,7 +38,6 @@ function writeLoader(spec: LoaderSpec): string {
   const manifest = {
     id: spec.id,
     version: "1.0.0",
-    entry: "host.js",
     application: {
       id: spec.applicationId,
       label: spec.applicationId,
@@ -50,7 +49,6 @@ function writeLoader(spec: LoaderSpec): string {
     background: spec.background ?? [],
   };
   writeFileSync(join(directory, "host.json"), JSON.stringify(manifest));
-  writeFileSync(join(directory, "host.js"), "export {};\n");
   return directory;
 }
 

@@ -155,14 +155,19 @@ describe("buildLocalCatalog with a loader standard", () => {
   function loaderDirectory(): string {
     const directory = join(base, "loader");
     mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, "host.js"), "export {};\n");
-    writeFileSync(join(directory, "host.json"), JSON.stringify({ id: "claude-code-loader", version: "1.0.0", entry: "host.js", ...standard }));
+    writeFileSync(join(directory, "host.json"), JSON.stringify({ id: "claude-code-loader", version: "1.0.0", ...standard }));
     return directory;
   }
 
   it("lists the application of a host.json on its host item", () => {
     const catalog = readBack(buildLocalCatalog([{ kind: "host", output: hostDirectoryOutput(loaderDirectory()) }], join(base, "catalog")));
     expect(catalog.items["claude-code-loader"]?.application).toEqual(standard.application);
+  });
+
+  it("refuses a loader directory holding anything beside its host.json, naming the file", () => {
+    const directory = loaderDirectory();
+    writeFileSync(join(directory, "host.js"), "export {};\n");
+    expect(() => hostDirectoryOutput(directory)).toThrow(/host\.js/);
   });
 
   it("lists no application for a host.json that has none", () => {
@@ -180,7 +185,7 @@ describe("buildLocalCatalog with a loader standard", () => {
 
   it("refuses a host.json whose standard is invalid", () => {
     const directory = loaderDirectory();
-    writeFileSync(join(directory, "host.json"), JSON.stringify({ id: "claude-code-loader", version: "1.0.0", entry: "host.js", ...standard, application: { ...standard.application, binary: "" } }));
+    writeFileSync(join(directory, "host.json"), JSON.stringify({ id: "claude-code-loader", version: "1.0.0", ...standard, application: { ...standard.application, binary: "" } }));
     expect(() => hostDirectoryOutput(directory)).toThrow(/\/application\/binary/);
   });
 });

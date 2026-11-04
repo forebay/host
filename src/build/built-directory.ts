@@ -2,12 +2,13 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import type { LoaderApplication } from "../loader/standard.js";
 import { BuildRefusal } from "./build-refusal.js";
-import { parsedManifest, readItemManifest, versionOf } from "./bundle-manifest.js";
+import { parsedManifest, readIdentifiedManifest, readItemManifest, versionOf } from "./bundle-manifest.js";
 import type { BundleOutput } from "./bundle-plugin.js";
 import { requireLoaderStandard } from "./loader-standard-check.js";
 import { moduleMarkerKey } from "../cache/module-marker.js";
 
 const LIBRARY_MANIFESTS = ["library.json", "package.json"];
+const HOST_MANIFEST = "host.json";
 
 function everyFile(directory: string): Record<string, string> {
   const relativePaths = readdirSync(directory, { recursive: true, encoding: "utf8" }).sort();
@@ -30,14 +31,26 @@ export function pluginDirectoryOutput(directory: string): BundleOutput {
   return { id: manifest.id, version: manifest.version, files: { ...files, "plugin.json": manifest.path } };
 }
 
-/** A host bundle directory: every file in it, its id and version from `host.json`, and the `application` of a loader. */
+function loaderDirectoryOutput(root: string): BundleOutput {
+  const manifest = readIdentifiedManifest(root, HOST_MANIFEST);
+  requireLoaderStandard(manifest.fields, manifest.path);
+  const files = everyFile(root);
+  const beside = Object.keys(files).filter((key) => key !== HOST_MANIFEST);
+  if (beside.length > 0) {
+    throw new BuildRefusal(`${root} is a loader bundle, which holds only ${HOST_MANIFEST}, but it also holds ${beside.join(", ")}`, "bundle the loader with forebay-host bundle-loader into an empty directory");
+  }
+  return { id: manifest.id, version: manifest.version, files, application: manifest.fields.application as LoaderApplication };
+}
+
+/**
+ * A host bundle directory: every file in it with its id and version from `host.json`, or for a
+ * loader, whose `host.json` declares an `application`, that one data-only file and the application.
+ */
 export function hostDirectoryOutput(directory: string): BundleOutput {
   const root = resolve(directory);
-  const manifest = readItemManifest(root, "host.json");
-  const output: BundleOutput = { id: manifest.id, version: manifest.version, files: everyFile(root) };
-  if (manifest.fields.application === undefined) return output;
-  requireLoaderStandard(manifest.fields, manifest.path);
-  return { ...output, application: manifest.fields.application as LoaderApplication };
+  if (readIdentifiedManifest(root, HOST_MANIFEST).fields.application !== undefined) return loaderDirectoryOutput(root);
+  const manifest = readItemManifest(root, HOST_MANIFEST);
+  return { id: manifest.id, version: manifest.version, files: everyFile(root) };
 }
 
 /** A library directory for one platform: every file in it, its version from `library.json`, else `package.json`. */

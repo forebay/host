@@ -74,11 +74,17 @@ function sourceOf(manifest: Record<string, unknown>, repositoryRoot: string): st
   throw new BuildRefusal(`${repositoryRoot} has no source entry ${source}`, `add ${DEFAULT_SOURCE}, or name the source to bundle in plugin.json's bundle.entry`);
 }
 
-export function readItemManifest(directory: string, fileName: string): ItemManifest & { fields: Record<string, unknown> } {
+/** The id and version a manifest names, for a bundle that has no entry: a loader's data-only `host.json`. */
+export function readIdentifiedManifest(directory: string, fileName: string): Omit<ItemManifest, "entry"> & { fields: Record<string, unknown> } {
   const path = join(directory, fileName);
-  if (!existsSync(path)) throw new BuildRefusal(`${directory} has no ${fileName}`, `give the directory the ${fileName} that names its id, version and entry`);
+  if (!existsSync(path)) throw new BuildRefusal(`${directory} has no ${fileName}`, `give the directory the ${fileName} that names its id and version`);
   const fields = parsedManifest(path);
-  return { path, id: idOf(fields, path), version: versionOf(fields, path), entry: entryOf(fields, path), fields };
+  return { path, id: idOf(fields, path), version: versionOf(fields, path), fields };
+}
+
+export function readItemManifest(directory: string, fileName: string): ItemManifest & { fields: Record<string, unknown> } {
+  const manifest = readIdentifiedManifest(directory, fileName);
+  return { ...manifest, entry: entryOf(manifest.fields, manifest.path) };
 }
 
 export function readBundleManifest(repositoryRoot: string): BundleManifest {
