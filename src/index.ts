@@ -12,6 +12,8 @@ export type { Provenance, RefusedCommand, RegisteredHost } from "./registration.
 export { hostsApi } from "./hosts.js";
 export type { HostSettings } from "./host-settings.js";
 export type { HostEntry, HostRemoval, HostsApi } from "./hosts.js";
+export type { ApplicationOperation, ApplicationRoute } from "./methods/application-route.js";
+export type { ApplicationProvenance } from "./install/application-provenance.js";
 export { userHomeOf } from "./user-home.js";
 export { directoryBundles } from "./plugins/bundle-source.js";
 export type { BundleEntry, BundleSource } from "./plugins/bundle-source.js";
