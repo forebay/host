@@ -58,6 +58,35 @@ describe("forebay-host", () => {
     expect(Object.keys(reading.catalog.items.koffi?.versions["2.16.3"]?.platforms?.["linux-x64"]?.files ?? {}).sort()).toEqual(["build/koffi.node", "package.json"]);
   });
 
+  describe("bundle-loader", () => {
+    const standard = {
+      application: { id: "claude", label: "Claude Code", binary: "claude", home: { candidates: ["~/.claude"] }, packages: { npm: "@anthropic-ai/claude-code" } },
+      pathCommands: { requested: ["cc"], minimum: 1 },
+      background: [],
+    };
+
+    function loaderRepository(module: string): string {
+      const packageJson = JSON.stringify({ name: "claude-code-loader", version: "1.13.0", type: "module", main: "dist/standard.js" });
+      return directoryWith(join(base, "loader"), { "package.json": packageJson, "dist/standard.js": module });
+    }
+
+    it("bundles the host under the loader's name and version with the standard its main module exports, and a catalog lists its application", async () => {
+      const repository = loaderRepository(`export const standard = ${JSON.stringify(standard)};`);
+      expect(await runCommandLine(["bundle-loader", repository, "--out", join(base, "bundled")], output)).toBe(0);
+      expect(JSON.parse(readFileSync(join(base, "bundled", "host.json"), "utf8"))).toEqual({ id: "claude-code-loader", version: "1.13.0", entry: "host.js", ...standard });
+      expect(await runCommandLine(["catalog", "build", "--host", join(base, "bundled"), "--out", join(base, "catalog")], output)).toBe(0);
+      const catalogPath = join(base, "catalog", "catalog.json");
+      const reading = readCatalog(readFileSync(catalogPath, "utf8"), pathToFileURL(catalogPath).href);
+      expect(reading.ok && reading.catalog.items["claude-code-loader"]?.application).toEqual(standard.application);
+    }, 120_000);
+
+    it("refuses a main module that exports no standard, naming the module", async () => {
+      const repository = loaderRepository("export const other = 1;");
+      expect(await runCommandLine(["bundle-loader", repository, "--out", join(base, "bundled")], output)).toBe(1);
+      expect(printed.error.join("\n")).toContain("standard.js");
+    });
+  });
+
   it("prints a refusal and its fix and answers 1", async () => {
     const repository = pluginRepository(join(base, "repository"), "greeter", { manifest: { version: undefined } });
     expect(await runCommandLine(["bundle", repository, "--out", join(base, "bundled")], output)).toBe(1);

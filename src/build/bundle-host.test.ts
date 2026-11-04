@@ -46,19 +46,20 @@ describe("bundleHost", () => {
     expect(JSON.parse(readFileSync(join(out, "package.json"), "utf8"))).toEqual({ type: "module" });
   });
 
-  it("writes application, pathCommands and background into host.json when given a loader standard", async () => {
+  it("writes a loader's own id and version, and its application, pathCommands and background, into host.json", async () => {
     const out = join(base, "out");
     const standard = {
       application: { id: "claude-code", label: "Claude Code", binary: "claude", home: { candidates: ["~/.claude"] }, packages: { npm: "@anthropic-ai/claude-code" } },
       pathCommands: { requested: ["claude"], minimum: 0 as const },
       background: ["forebay-host"],
     };
-    await bundledHost(out, standard);
-    expect(JSON.parse(readFileSync(join(out, "host.json"), "utf8"))).toEqual({ id: "forebay-host", version: PACKAGE_VERSION, entry: "host.js", ...standard });
+    const { output } = await bundledHost(out, { id: "claude-code-loader", version: "1.13.0", standard });
+    expect(JSON.parse(readFileSync(join(out, "host.json"), "utf8"))).toEqual({ id: "claude-code-loader", version: "1.13.0", entry: "host.js", ...standard });
+    expect([output.id, output.version]).toEqual(["claude-code-loader", "1.13.0"]);
   });
 
   it("refuses a loader standard that checkLoaderStandard refuses", async () => {
-    await expect(bundledHost(join(base, "out"), { application: {}, pathCommands: {}, background: [] } as never)).rejects.toThrow(/\/application\/id/);
+    await expect(bundledHost(join(base, "out"), { id: "claude-code-loader", version: "1.0.0", standard: { application: {}, pathCommands: {}, background: [] } as never })).rejects.toThrow(/\/application\/id/);
   });
 
   it("contains no esbuild and nothing under src/build, and imports only node builtins", async () => {
