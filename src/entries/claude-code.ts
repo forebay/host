@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { bootExecutable } from "../boot/boot-executable.js";
 import { bootEntryFile } from "../boot/boot-install.js";
 import type { HostPlaces } from "../context/places.js";
 import { FOREBAY_HOST_ID } from "../install/forebay-host.js";
@@ -35,7 +36,7 @@ function pluginManifest(): unknown {
  * path is ever quoted for Git Bash or PowerShell, whichever Claude Code would pick on Windows.
  */
 function hooks(places: HostPlaces, loaderId: string): unknown {
-  const command = { type: "command", command: process.execPath, args: [bootEntryFile(places.cache), FOREBAY_HOST_ID, "hook", loaderId, "session-start"], timeout: HOOK_TIMEOUT_SECONDS };
+  const command = { type: "command", command: bootExecutable(places.cache), args: [bootEntryFile(places.cache), FOREBAY_HOST_ID, "hook", loaderId, "session-start"], timeout: HOOK_TIMEOUT_SECONDS };
   return { hooks: { SessionStart: [{ hooks: [command] }] } };
 }
 

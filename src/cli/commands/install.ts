@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
+import { recordBootExecutable } from "../../boot/boot-executable.js";
 import { installBootEntry } from "../../boot/boot-install.js";
 import { defaultFetcher } from "../../cache/fetcher.js";
 import type { Catalog } from "../../catalog/catalog.js";
@@ -106,6 +107,7 @@ export async function installCommand(
   const bootstrap = await bootstrapLibraries(sources, location.cache, fetcher);
   const source = verifiedRuntimeSource(location.cache, librariesOf(bootstrap), currentPlatformKey());
   installBootEntry(location.cache, location.directory);
+  recordBootExecutable(location.cache, process.execPath);
   const choices = choicesOf(given, bootstrap.catalog);
   const { places } = readHostSetup(source, environment, location);
   const options: InstallOptions = { catalog: sources, places, home: forebayHostHome(places), defaults: [], requested: given.plugins, fetcher, bootstrap };

@@ -8,6 +8,7 @@ import { sha256Of } from "../cache/sha256.js";
 import type { Catalog } from "../catalog/catalog.js";
 import { hostLibraryReferences } from "../install/boot-from-cache.js";
 import { commandTarget } from "../install/loader-identity.js";
+import { recordBootExecutable } from "./boot-executable.js";
 import { recordReferences } from "../updates/references.js";
 import { sweepCache } from "../updates/sweep.js";
 import { writeBootHint } from "./boot-hint.js";
@@ -81,6 +82,7 @@ beforeEach(() => {
   installLibrary("runtime", LIBRARIES.runtime);
   installLibrary("koffi", LIBRARIES.koffi);
   installBootEntry(cache, installFakeHost("1.0.0"));
+  recordBootExecutable(cache, process.execPath);
 });
 
 afterEach(() => {
@@ -180,7 +182,7 @@ describe("installBootEntry", () => {
 });
 
 describe("commandTarget", () => {
-  it("names the running runtime executable and the versionless entry, never a version", () => {
+  it("names the runtime executable install recorded and the versionless entry, never a version", () => {
     expect(commandTarget(cache, "cc-loader")).toEqual({ target: process.execPath, arguments: [bootEntryFile(cache), HOST, "launch", "cc-loader"] });
   });
 });

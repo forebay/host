@@ -28,17 +28,30 @@ function applicationBinary(application: LoaderApplication, environment: Record<s
  *
  * @remarks Everything that can be refused (no registration, no application on the PATH, a background
  * host never registered) is refused before anything starts, so a refusal leaves nothing running.
- * A launcher that is killed leaves the application running; each background host it held exits by
- * itself once no holder is alive.
+ * The application's own pid holds each background host beside the launcher's, so a launcher that is
+ * killed leaves the application running with its background hosts; each exits by itself once
+ * neither is alive.
+ *
+ * @implNote On Windows the JavaScript runtime places a child it does not detach in a job that ends
+ * with the launcher, so there the held pid (the application, or the command shell behind a `.cmd`
+ * shim) ends with a killed launcher too, and a shim's application, which breaks away from the job,
+ * runs on without its background hosts. Detaching the child would cost it its console.
  */
 export async function launchCommand(request: LaunchRequest, bundleFile: string, environment: Record<string, string>): Promise<number> {
   const session = openCacheSession(bundleFile, environment);
   const prepared = prepareLoader(session, request.loaderId);
   const binary = applicationBinary(prepared.standard.application, environment);
-  const stop = await startLoaderSession(session, prepared, environment);
+  const loaderSession = await startLoaderSession(session, prepared, environment);
+  let applicationHold: Promise<() => Promise<void>> | undefined;
   try {
-    return await runApplication(binary, request.applicationArguments, environment);
+    return await runApplication(binary, request.applicationArguments, environment, (pid) => {
+      applicationHold = loaderSession.holdFor(pid);
+    });
   } finally {
-    await stop();
+    try {
+      if (applicationHold !== undefined) await (await applicationHold)();
+    } finally {
+      await loaderSession.stop();
+    }
   }
 }

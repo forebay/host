@@ -34,9 +34,9 @@ function registerLoader(session: CacheSession, request: HookRequest, environment
   const { version } = run;
   const standard = standardOf(session, request.loaderId, version);
   const { places } = session.setup;
-  const identity = loaderIdentity({ id: request.loaderId, version, application: standard.application, pathCommands: standard.pathCommands, cache: places.cache, environment });
   const runtime = openRuntime(session.boot.runtime);
   try {
+    const identity = loaderIdentity(runtime, { id: request.loaderId, version, application: standard.application, pathCommands: standard.pathCommands, places, environment });
     registerHost(runtime, places, identity, catalogProvenance(places.cache, request.loaderId, version, new Date()), environment);
   } finally {
     runtime.close();
