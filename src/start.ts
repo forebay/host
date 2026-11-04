@@ -129,8 +129,8 @@ function pluginHostOptions(runtime: Runtime, places: HostPlaces, options: HostOp
   };
 }
 
-/** Stops the plugins, then the background workers, before the runtime they call into closes, once however often it is called. */
-function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, updates: UpdateTracker | null, runtime: Runtime): () => Promise<void> {
+/** Stops the plugins, then the background workers, before the runtime they call into closes and the start's run record goes, once however often it is called. */
+function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, updates: UpdateTracker | null, runtime: Runtime, catalog: CatalogStart | null): () => Promise<void> {
   let stopping: Promise<void> | null = null;
   const stopOnce = async () => {
     try {
@@ -140,6 +140,7 @@ function stopper(loaded: LoadedHost, reconcile: ReconcileTracker, updates: Updat
         await Promise.all([reconcile.stop(), updates?.stop()]);
       } finally {
         runtime.close();
+        catalog?.releaseRun();
       }
     }
   };
@@ -157,9 +158,14 @@ async function loadPlugins(
   const registration = registerHost(runtime, places, options.identity, options.provenance, environment);
   const settings = hostSettings(runtime, places, options.identity.home).all();
   const origin = startBundles(settings, places, options);
-  const selection = selectPlugins(settings, origin.bundles, options.consumes ?? [], options.defaults ?? {});
-  const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection, bus));
-  return { registration, selection, loaded, origin };
+  try {
+    const selection = selectPlugins(settings, origin.bundles, options.consumes ?? [], options.defaults ?? {});
+    const loaded = await engine.startPlugins(pluginHostOptions(runtime, places, options, selection, bus));
+    return { registration, selection, loaded, origin };
+  } catch (error) {
+    origin.catalog?.releaseRun();
+    throw error;
+  }
 }
 
 function catalogStatus(catalog: CatalogStart | null, updates: UpdateTracker | null): CatalogStatus | undefined {
@@ -186,7 +192,7 @@ async function startOn(runtime: Runtime, options: HostOptions, engine: HostEngin
       settings: hostSettings(runtime, places, options.identity.home),
       registration,
       status: () => statusOf(options.identity.id, loaded, selection.missing, reconcile.outcome(), catalogStatus(origin.catalog, updates)),
-      stop: stopper(loaded, reconcile, updates, runtime),
+      stop: stopper(loaded, reconcile, updates, runtime, origin.catalog),
     };
   } catch (error) {
     await reconcile.stop();
