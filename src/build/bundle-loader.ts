@@ -3,12 +3,14 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { acceptsItemId } from "../catalog/accepts.js";
 import type { LoaderStandard } from "../loader/standard.js";
-import { bundleHost } from "./bundle-host.js";
 import { BuildRefusal } from "./build-refusal.js";
 import { parsedManifest, versionOf } from "./bundle-manifest.js";
 import type { BundleOutput } from "./bundle-plugin.js";
+import { writeFile } from "./esbuild-bundle.js";
+import { requireLoaderStandard } from "./loader-standard-check.js";
 
 const PACKAGE_FILE = "package.json";
+const HOST_MANIFEST = "host.json";
 const STANDARD_EXPORT = "standard";
 
 function loaderIdOf(manifest: Record<string, unknown>, path: string): string {
@@ -32,10 +34,13 @@ async function standardOf(module: string): Promise<LoaderStandard> {
 }
 
 /**
- * Bundles the host for a loader repository: under its package name and version, with the
- * `standard` its package's main module exports, which the bundle's `host.json` then carries.
+ * Writes the bundle of a loader repository, which is data only: one `host.json` naming the loader
+ * by its package name and version and carrying the `standard` its package's main module exports.
  *
- * @remarks A standard that `checkLoaderStandard` refuses is refused before anything is written.
+ * @remarks The loader runs no code of its own: its commands and entries start the shared host,
+ * which reads this `host.json` from the cache. The id and version are written after the standard,
+ * so a standard carrying either cannot rename the bundle. A standard that `checkLoaderStandard`
+ * refuses is refused before anything is written.
  */
 export async function bundleLoader(repositoryRoot: string, outDirectory: string): Promise<BundleOutput> {
   const root = resolve(repositoryRoot);
@@ -43,5 +48,10 @@ export async function bundleLoader(repositoryRoot: string, outDirectory: string)
   if (!existsSync(path)) throw new BuildRefusal(`${root} has no ${PACKAGE_FILE}`, "give the loader repository a package.json naming it, its version and its main module");
   const manifest = parsedManifest(path);
   const standard = await standardOf(mainModuleOf(manifest, root, path));
-  return bundleHost(outDirectory, { id: loaderIdOf(manifest, path), version: versionOf(manifest, path), standard });
+  const id = loaderIdOf(manifest, path);
+  const version = versionOf(manifest, path);
+  requireLoaderStandard(standard, `the standard of ${id}`);
+  const file = join(resolve(outDirectory), HOST_MANIFEST);
+  writeFile(file, `${JSON.stringify({ ...standard, id, version }, null, 2)}\n`);
+  return { id, version, files: { [HOST_MANIFEST]: file }, application: standard.application };
 }

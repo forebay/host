@@ -10,7 +10,7 @@ import { resolveApplicationsForCommand } from "./install.js";
 
 const FILE = { url: "https://catalog.test/file", sha256: "0".repeat(64), size: 1 };
 const APPLICATION = { id: "claude", label: "Claude", binary: "claude-binary-absent", home: { candidates: ["~/.claude"] }, packages: { fake: "claude-pkg" } };
-const CATALOG: Catalog = { format: 1, items: { claude: { kind: "host", latest: "1.0.0", versions: { "1.0.0": { files: { "host.js": FILE } } }, application: APPLICATION } } };
+const CATALOG: Catalog = { format: 1, items: { claude: { kind: "host", latest: "1.0.0", versions: { "1.0.0": { files: { "host.json": FILE } } }, application: APPLICATION } } };
 
 describe("install command line", () => {
   it("answers 2 and names the offered methods for an --application method that is not offered, installing nothing", async () => {

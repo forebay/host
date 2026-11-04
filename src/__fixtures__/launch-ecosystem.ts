@@ -27,17 +27,17 @@ export interface LaunchEcosystem {
   places: HostPlaces;
 }
 
-function fixtureHostInput(workspace: string, id: string): CatalogInput {
+function fixtureHostInput(workspace: string, id: string, entries: Record<string, string>): CatalogInput {
   const directory = join(workspace, "hosts", id);
   mkdirSync(directory, { recursive: true });
   copyFileSync(join(FIXTURE_HOSTS, id, "host.json"), join(directory, "host.json"));
-  writeFileSync(join(directory, "host.js"), "export {};\n");
+  for (const [name, text] of Object.entries(entries)) writeFileSync(join(directory, name), text);
   return { kind: "host", output: hostDirectoryOutput(directory) };
 }
 
-/** The ecosystem catalog with the fixture loader, whose `background` names the fixture background host, that host, and every `extra` input. */
+/** The ecosystem catalog with the fixture loader, a data-only bundle whose `background` names the fixture background host, that host, and every `extra` input. */
 export function launchCatalog(workspace: string, extra: readonly CatalogInput[] = []): Promise<EcosystemCatalog> {
-  return ecosystemCatalog(workspace, [fixtureHostInput(workspace, LOADER_ID), fixtureHostInput(workspace, BACKGROUND_ID), ...extra]);
+  return ecosystemCatalog(workspace, [fixtureHostInput(workspace, LOADER_ID, {}), fixtureHostInput(workspace, BACKGROUND_ID, { "host.js": "export {};\n" }), ...extra]);
 }
 
 function placesOf(environment: Record<string, string>): HostPlaces {

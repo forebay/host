@@ -49,8 +49,7 @@ function writeLoader(): string {
   const directory = join(base, "loaders", LOADER_ID);
   mkdirSync(directory, { recursive: true });
   const application = { id: "claude", label: "Claude", binary: BINARY, home: { candidates: ["~/homes/claude"] }, packages: PACKAGES };
-  writeFileSync(join(directory, "host.json"), JSON.stringify({ id: LOADER_ID, version: "1.0.0", entry: "host.js", application, pathCommands: { requested: [], minimum: 0 }, background: [] }));
-  writeFileSync(join(directory, "host.js"), "export {};\n");
+  writeFileSync(join(directory, "host.json"), JSON.stringify({ id: LOADER_ID, version: "1.0.0", application, pathCommands: { requested: [], minimum: 0 }, background: [] }));
   return directory;
 }
 

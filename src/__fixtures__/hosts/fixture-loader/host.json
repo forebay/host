@@ -1,7 +1,6 @@
 {
   "id": "fixture-loader",
   "version": "1.0.0",
-  "entry": "host.js",
   "application": {
     "id": "fixture-app",
     "label": "Fixture application",
