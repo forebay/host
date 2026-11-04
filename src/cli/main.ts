@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { BuildRefusal } from "../build/build-refusal.js";
-import { bundleCommand } from "./commands/bundle.js";
+import { bundleCommand, bundleLoaderCommand } from "./commands/bundle.js";
 import { isRunDirectly, runCommands, UsageError } from "./command-line.js";
 import type { Refusal } from "./command-line.js";
 import { catalogBuildCommand } from "./commands/catalog-build.js";
@@ -12,6 +12,7 @@ import type { CommandLineOutput } from "./output.js";
 const USAGE = [
   "usage:",
   "  forebay-host bundle <repository> --out <directory>",
+  "  forebay-host bundle-loader <repository> --out <directory>",
   "  forebay-host catalog build [--plugin <directory>]... [--host <directory>]... [--library <id>=<directory>@<platform>]... --out <directory>",
 ].join("\n");
 
@@ -28,10 +29,20 @@ function libraryArgument(text: string): LibraryArgument {
   return { id: match[1] as string, directory: match[2] as string, platform: match[3] as string };
 }
 
-async function runBundle(rest: string[], output: CommandLineOutput): Promise<void> {
+function repositoryAndOut(command: string, rest: string[]): { repository: string; out: string } {
   const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { out: { type: "string" } } });
-  if (positionals.length !== 1) throw new UsageError("bundle takes exactly one repository");
-  await bundleCommand(positionals[0] as string, requiredOut(values.out), output);
+  if (positionals.length !== 1) throw new UsageError(`${command} takes exactly one repository`);
+  return { repository: positionals[0] as string, out: requiredOut(values.out) };
+}
+
+async function runBundle(rest: string[], output: CommandLineOutput): Promise<void> {
+  const { repository, out } = repositoryAndOut("bundle", rest);
+  await bundleCommand(repository, out, output);
+}
+
+async function runBundleLoader(rest: string[], output: CommandLineOutput): Promise<void> {
+  const { repository, out } = repositoryAndOut("bundle-loader", rest);
+  await bundleLoaderCommand(repository, out, output);
 }
 
 function runCatalogBuild(rest: string[], output: CommandLineOutput): void {
@@ -46,6 +57,7 @@ function runCatalogBuild(rest: string[], output: CommandLineOutput): void {
 async function dispatch(argv: string[], output: CommandLineOutput): Promise<void> {
   const [command, subcommand, ...rest] = argv;
   if (command === "bundle") return runBundle(argv.slice(1), output);
+  if (command === "bundle-loader") return runBundleLoader(argv.slice(1), output);
   if (command === "catalog" && subcommand === "build") return runCatalogBuild(rest, output);
   throw new UsageError(`unknown command: ${argv.join(" ") || "(none)"}`);
 }
