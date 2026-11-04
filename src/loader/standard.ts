@@ -6,7 +6,7 @@ export interface LoaderApplication {
   id: string;
   label: string;
   binary: string;
-  home: { envOverride?: string; nativeEnv?: string; candidates: string[] };
+  home: { envOverride?: string; nativeEnv?: string; xdgSubdir?: string; candidates: string[] };
   packages: Record<string, PackageMapping>;
 }
 
@@ -65,6 +65,11 @@ function checkOptionalName(home: Record<string, unknown>, member: string): Loade
   return issue(`/application/home/${member}`, `${member} is not an environment variable name`, `name the variable as a non-empty string, or leave ${member} out`);
 }
 
+function checkXdgSubdir(xdgSubdir: unknown): LoaderStandardIssue[] {
+  if (xdgSubdir === undefined || isPortableName(xdgSubdir)) return [];
+  return issue("/application/home/xdgSubdir", `the xdgSubdir ${JSON.stringify(xdgSubdir)} is not a portable directory name`, `${PORTABLE_NAME_FIX}, or leave xdgSubdir out`);
+}
+
 function checkCandidates(candidates: unknown): LoaderStandardIssue[] {
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return issue("/application/home/candidates", "the home has no candidate directories", 'list at least one candidate, for example "~/.claude"');
@@ -78,7 +83,7 @@ function checkCandidates(candidates: unknown): LoaderStandardIssue[] {
 
 function checkHome(home: unknown): LoaderStandardIssue[] {
   if (!isRecord(home)) return issue("/application/home", "the application has no home", "give the application a home with a candidates list");
-  return [...checkOptionalName(home, "envOverride"), ...checkOptionalName(home, "nativeEnv"), ...checkCandidates(home.candidates)];
+  return [...checkOptionalName(home, "envOverride"), ...checkOptionalName(home, "nativeEnv"), ...checkXdgSubdir(home.xdgSubdir), ...checkCandidates(home.candidates)];
 }
 
 function isPackageMapping(value: unknown): boolean {

@@ -44,6 +44,18 @@ describe("checkLoaderStandard", () => {
     expect(checkLoaderStandard(standard)).toEqual([]);
   });
 
+  it("accepts an xdgSubdir that is one portable name", () => {
+    const standard = validStandard();
+    Object.assign(standard.application.home, { xdgSubdir: "opencode" });
+    expect(checkLoaderStandard(standard)).toEqual([]);
+  });
+
+  it.each(["", "../x", "a/b", 7])("refuses the xdgSubdir %j", (xdgSubdir) => {
+    const standard = validStandard();
+    Object.assign(standard.application.home, { xdgSubdir });
+    expect(pathsOf(standard)).toEqual(["/application/home/xdgSubdir"]);
+  });
+
   it("refuses a package that is neither a name nor an object with a name, naming its method", () => {
     const standard = validStandard();
     Object.assign(standard.application.packages, { brew: 7, scoop: { source: "x" } });

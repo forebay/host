@@ -68,6 +68,13 @@ describe("readCatalog", () => {
       expect(refusalOf(index({ ...hostItem, application: options })).path).toContain("/application/packages/brew");
     });
 
+    it("reads a home with an xdgSubdir, and refuses one that is a path", () => {
+      const xdgApplication = { ...application, home: { candidates: ["~/.config/opencode"], xdgSubdir: "opencode" } };
+      expect(catalogOf(index({ ...hostItem, application: xdgApplication })).items.thing?.application).toEqual(xdgApplication);
+      const pathSubdir = { ...application, home: { candidates: ["~/.config/opencode"], xdgSubdir: "../opencode" } };
+      expect(refusalOf(index({ ...hostItem, application: pathSubdir })).path).toBe("/items/thing/application/home/xdgSubdir");
+    });
+
     it("refuses an application with no binary, naming its path", () => {
       const { binary: _binary, ...withoutBinary } = application;
       expect(refusalOf(index({ ...hostItem, application: withoutBinary })).path).toBe("/items/thing/application/binary");
