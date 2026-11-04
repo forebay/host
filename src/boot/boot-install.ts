@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { MODULE_MARKER_CONTENT } from "../cache/module-marker.js";
 import { CacheRefusal } from "../cache/cache-refusal.js";
+import { checkInstalled } from "../cache/install-marker.js";
+import { isStrictlyInside } from "../cache/strictly-inside.js";
+import { FOREBAY_HOST_ID } from "../install/forebay-host.js";
+import { readBootHint } from "./boot-hint.js";
 
 export const BOOT_ENTRY_NAME = "boot.js";
 
@@ -39,4 +43,20 @@ export function installBootEntry(cache: string, bundleDirectory: string): void {
   mkdirSync(join(cache, "boot"), { recursive: true });
   writeIfDifferent(bootEntryFile(cache), source);
   writeIfDifferent(join(cache, "boot", "package.json"), MODULE_MARKER_CONTENT);
+}
+
+/**
+ * Makes `<cache>/boot/boot.js` the one the forebay-host version the boot hint names carries, and
+ * writes nothing when the hint names none or that version is not installed intact.
+ *
+ * @implNote Every start opens a cache session, so writing from whichever bundle is running would
+ * let an older session, or a rolled-back one, put an older boot entry back over the current one.
+ */
+export function installHintedBootEntry(cache: string): void {
+  const version = readBootHint(cache, FOREBAY_HOST_ID)?.host;
+  if (version === undefined) return;
+  const versions = join(cache, "bundles", FOREBAY_HOST_ID);
+  const directory = join(versions, version);
+  if (!isStrictlyInside(versions, directory) || checkInstalled(directory).kind !== "intact") return;
+  installBootEntry(cache, directory);
 }

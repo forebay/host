@@ -1,11 +1,12 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readBootHint } from "../boot/boot-hint.js";
 import { bootEntryFile } from "../boot/boot-install.js";
+import { openCacheSession } from "../cli/cache-session.js";
 import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
 import type { EcosystemCatalog } from "../__fixtures__/ecosystem-catalog.js";
 import { fakeApplicationStart, installFakeApplication, releaseFakeApplication, SIGNALS_VARIABLE, windowsSystemVariables } from "../__fixtures__/fake-application.js";
@@ -14,6 +15,7 @@ import { APPLICATION_ID, BACKGROUND_ID, installLaunchEcosystem, launchCatalog, L
 import type { LaunchEcosystem } from "../__fixtures__/launch-ecosystem.js";
 import type { Catalog } from "../catalog/catalog.js";
 import { hostsApi } from "../hosts.js";
+import { forebayHostHome } from "../install/forebay-host.js";
 import { emptyReport } from "../install/install-report.js";
 import { holdersFile, isProcessAlive, readHolders } from "../processes/holders.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
@@ -52,6 +54,17 @@ function registeredVersion(id: string): unknown {
   const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
   try {
     return runtime.registry.get({ places: installed().places, id }).registration?.version;
+  } finally {
+    runtime.close();
+  }
+}
+
+/** Pins the loader to `version` in the portable settings, as a user holding it to a version the catalog does not list would. */
+function pinLoader(version: string): void {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    const { places } = installed();
+    runtime.settings.set({ home: forebayHostHome(places), portable: places.portable, key: `plugins.${LOADER_ID}.pin`, value: version, layer: "portable" });
   } finally {
     runtime.close();
   }
@@ -294,6 +307,7 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
   it("runs the loader version its references schedule, keeping the one it ran for rollback until a later start", async () => {
     const bundles = join(installed().places.cache, "bundles", LOADER_ID);
     cpSync(join(bundles, "1.0.0"), join(bundles, "2.0.0"), { recursive: true });
+    pinLoader("2.0.0");
     recordReferences(state(), LOADER_ID, { run: { [LOADER_ID]: "1.0.0" }, next: { [LOADER_ID]: "2.0.0" } });
     removeHostReferences(state(), "forebay-host");
 
@@ -325,6 +339,7 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
   it("keeps the version a launch switched to when a later hook records the loader, so a sweep never deletes what launch runs", async () => {
     const bundles = join(installed().places.cache, "bundles", LOADER_ID);
     cpSync(join(bundles, "1.0.0"), join(bundles, "2.0.0"), { recursive: true });
+    pinLoader("2.0.0");
     recordReferences(state(), LOADER_ID, { run: { [LOADER_ID]: "1.0.0" }, next: { [LOADER_ID]: "2.0.0" } });
     const switching = launch(["switched", "0"]);
     await applicationStarted("switched");
@@ -360,6 +375,18 @@ describe("forebay-host launch, through the boot entry and the real host bundle",
     } finally {
       runtime.close();
     }
+  });
+
+  it("writes the boot entry only from the forebay-host version the boot hint names, so an older session never puts its own back", () => {
+    const { cache } = installed().places;
+    const hosts = join(cache, "bundles", "forebay-host");
+    cpSync(join(hosts, catalog.hostVersion), join(hosts, "0.0.1"), { recursive: true });
+    writeFileSync(join(hosts, "0.0.1", "boot.js"), "// an older boot entry\n");
+
+    openCacheSession(join(hosts, "0.0.1", "host.js"), installed().environment);
+
+    expect(readBootHint(cache, "forebay-host")?.host).toBe(catalog.hostVersion);
+    expect(readFileSync(bootEntryFile(cache))).toEqual(readFileSync(join(hosts, catalog.hostVersion, "boot.js")));
   });
 
   it.skipIf(process.platform === "win32")("passes a SIGTERM on to the application and answers 128 plus its number", async () => {

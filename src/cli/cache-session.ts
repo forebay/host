@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { installBootEntry } from "../boot/boot-install.js";
+import { installHintedBootEntry } from "../boot/boot-install.js";
 import type { BundleLocation } from "../cache/bundle-location.js";
 import { checkInstalled } from "../cache/install-marker.js";
 import { bootFromCache, hostLibraryReferences } from "../install/boot-from-cache.js";
@@ -37,12 +37,12 @@ function recordOf(registration: Record<string, unknown> | undefined): Registered
 }
 
 /**
- * Opens the cache the host bundle `bundleFile` is installed in: the boot entry is made this
- * bundle's, and the runtime and koffi the standalone host's boot hint names are verified.
+ * Opens the cache the host bundle `bundleFile` is installed in: the boot entry is made the one the
+ * boot hint's forebay-host version carries, and the runtime and koffi that hint names are verified.
  */
 export function openCacheSession(bundleFile: string, environment: Record<string, string>): CacheSession {
   const location = installedHostAt(bundleFile);
-  installBootEntry(location.cache, location.directory);
+  installHintedBootEntry(location.cache);
   const boot = bootFromCache(location.cache, FOREBAY_HOST_ID);
   return { location, boot, setup: readHostSetup(boot.runtime, environment, location) };
 }
