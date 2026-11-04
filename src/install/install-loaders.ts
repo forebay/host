@@ -12,7 +12,9 @@ import { openRuntime } from "../runtime/open.js";
 import type { Runtime, RuntimeSource } from "../runtime/open.js";
 import { catalogProvenance, ownHostHome } from "./forebay-host.js";
 import { installItems } from "./install-items.js";
-import type { InstallReport, LoaderReport } from "./install-report.js";
+import { provenanceOf, storedApplicationProvenance } from "./application-provenance.js";
+import type { ApplicationProvenance } from "./application-provenance.js";
+import type { ApplicationOrigin, InstallReport, LoaderReport } from "./install-report.js";
 import { loaderIdentity } from "./loader-identity.js";
 
 const REGISTERED_STATES = new Set(["installed", "detected"]);
@@ -57,9 +59,25 @@ function entryOf(runtime: Runtime, places: HostPlaces, loader: EntryLoader): Loa
   }
 }
 
-function registerLoader(runtime: Runtime, options: InstallLoadersOptions, loader: CatalogLoader, version: string, pathCommands: LoaderStandard["pathCommands"]): LoaderReport {
+/** @implNote The first registration wins, so a later install never rewrites how the application was first found or installed. */
+function provenanceToRecord(runtime: Runtime, options: InstallLoadersOptions, loader: CatalogLoader, home: string, origin: ApplicationOrigin | undefined): ApplicationProvenance | undefined {
+  const stored = storedApplicationProvenance(runtime, options.places, loader.id);
+  if (stored !== undefined || origin === undefined) return stored;
+  return provenanceOf({ origin, application: loader.application, home, environment: options.environment, now: new Date() });
+}
+
+function registerLoader(
+  runtime: Runtime,
+  options: InstallLoadersOptions,
+  loader: CatalogLoader,
+  version: string,
+  pathCommands: LoaderStandard["pathCommands"],
+  origin: ApplicationOrigin | undefined,
+): LoaderReport {
   const { places, environment } = options;
-  const identity = loaderIdentity({ id: loader.id, version, application: loader.application, pathCommands, cache: places.cache, environment });
+  const unrecorded = loaderIdentity({ id: loader.id, version, application: loader.application, pathCommands, cache: places.cache, environment });
+  const provenance = provenanceToRecord(runtime, options, loader, unrecorded.home, origin);
+  const identity = provenance === undefined ? unrecorded : { ...unrecorded, application: { ...unrecorded.application, provenance } };
   const registered = registerHost(runtime, places, identity, catalogProvenance(places.cache, loader.id, version, new Date()), environment);
   recordRunningVersion(places.state, loader.id, version);
   return {
@@ -80,7 +98,7 @@ function registerInstalled(runtime: Runtime, options: InstallLoadersOptions, rep
     return [];
   }
   try {
-    report.loaders.push(registerLoader(runtime, options, loader, version, standard.pathCommands));
+    report.loaders.push(registerLoader(runtime, options, loader, version, standard.pathCommands, report.applications.find(({ id }) => id === loader.application.id)?.origin));
     return standard.background;
   } catch (error) {
     report.unavailable.push({ id: loader.id, ...messageOf(error) });

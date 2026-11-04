@@ -1,5 +1,7 @@
 import type { HostPlaces } from "./context/places.js";
 import type { Runtime } from "./runtime/open.js";
+import { removeApplicationThrough, updateApplicationThrough } from "./methods/application-route.js";
+import type { ApplicationOperation, ApplicationRoute } from "./methods/application-route.js";
 import { removeHostReferences } from "./updates/references.js";
 
 export interface HostEntry {
@@ -17,6 +19,10 @@ export interface HostsApi {
   list(): HostEntry[];
   orphans(): HostEntry[];
   remove(id: string): HostRemoval;
+  /** Updates the loader's application through the install method its registration recorded; a method whose provider is absent has the provider installed first. */
+  updateApplication(loaderId: string, route: ApplicationRoute): Promise<ApplicationOperation>;
+  /** Removes the loader's application through the recorded install method, and leaves the loader registered. */
+  removeApplication(loaderId: string, route: ApplicationRoute): Promise<ApplicationOperation>;
   renameCommand(host: string, from: string, to: string): string;
   deleteCommand(host: string, name: string): void;
   addCommand(host: string, home: string, name: string, target: string): string;
@@ -38,6 +44,8 @@ export function hostsApi(runtime: Runtime, places: HostPlaces, environment: Reco
       removeHostReferences(places.state, id);
       return { reversed, drifted, forgotten };
     },
+    updateApplication: (loaderId, route) => updateApplicationThrough(runtime, places, loaderId, route),
+    removeApplication: (loaderId, route) => removeApplicationThrough(runtime, places, loaderId, route),
     renameCommand: (host, from, to) => runtime.commands.rename({ places, environment, host, from, to }).name,
     deleteCommand: (host, name) => {
       runtime.commands.delete({ places, host, name });

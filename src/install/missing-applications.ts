@@ -8,9 +8,16 @@ import { operate } from "../methods/operate.js";
 import type { RunningHost } from "../start.js";
 import { activeMethods, applicationsOf, catalogProviders, offerFor } from "./application-offers.js";
 import type { ApplicationOffer, CatalogProvider, MethodRefusal } from "./application-offers.js";
-import type { ApplicationReport, InstallReport } from "./install-report.js";
+import type { MethodDetection } from "../methods/detection.js";
+import { detectRecorded } from "../methods/detect.js";
+import type { ApplicationOrigin, ApplicationReport, InstallReport } from "./install-report.js";
+import { installProviderStep, planSteps, readStep, runningOf } from "./provider-install.js";
+import type { MissingApplicationsHost, PlanStep, ProviderSession } from "./provider-install.js";
+
+export type { MissingApplicationsHost };
 
 const SKIP = "skip";
+const PATH_METHOD = "path";
 const MAX_ATTEMPTS = 3;
 
 /** A `--application` value the command line cannot accept. */
@@ -25,17 +32,8 @@ export interface MissingApplicationsRequest {
   platformKey?: string;
 }
 
-/** How the install starts the host from the cache, and installs and enables one more plugin into it. */
-export interface MissingApplicationsHost {
-  start(): Promise<RunningHost>;
-  installProvider(id: string): Promise<InstallReport>;
-}
-
-interface Session {
-  running: RunningHost | undefined;
+interface Session extends ProviderSession {
   request: MissingApplicationsRequest;
-  host: MissingApplicationsHost;
-  report: InstallReport;
   platformKey: string;
   providers: CatalogProvider[];
   terminalAvailable: boolean;
@@ -57,11 +55,6 @@ export function checkApplicationIds(catalog: Catalog, choices: Record<string, st
   const known = applicationsOf(catalog).map(({ id }) => id);
   const unknown = Object.keys(choices).find((id) => !known.includes(id));
   if (unknown !== undefined) throw new ApplicationChoiceError(`--application names ${unknown}, which the catalog lists no application under; the applications are ${known.join(", ") || "(none)"}`);
-}
-
-function running(session: Session): RunningHost {
-  if (session.running === undefined) throw new Error("the host is not running");
-  return session.running;
 }
 
 function flagFor(id: string, method: string): string {
@@ -112,50 +105,24 @@ function failed(application: LoaderApplication, method: string, detail: string, 
   return { id: application.id, state: "failed", unavailable: [{ method, detail, fix }] };
 }
 
-function stepsOf(session: Session, application: LoaderApplication, offered: string[], method: string): { steps: Array<Record<string, unknown>> } | MethodRefusal {
-  const current = running(session);
-  try {
-    return current.runtime.install.plan({
-      places: current.places,
-      item: application.id,
-      manifestPackages: application.packages,
-      methods: offered,
-      chosen: method,
-      installedProviders: activeMethods(current),
-      catalog: session.providers.map((provider) => ({ ...provider })),
-    });
-  } catch (error) {
-    return { method, detail: (error as Error).message, fix: "choose another method" };
-  }
+/** @implNote The version is what the provider reports after the install, so a provider that cannot say leaves it absent. */
+async function installedOrigin(current: RunningHost, application: LoaderApplication, method: string, step: Extract<PlanStep, { kind: "install" }>): Promise<ApplicationOrigin> {
+  const detection = await detectRecorded(current, application.id, method, step.name, step.options);
+  const version = "answer" in detection && detection.answer.installed ? detection.answer.version : undefined;
+  return { method, package: step.name, ...(step.options === undefined ? {} : { options: step.options }), ...(version === undefined ? {} : { version }) };
 }
 
-async function installProviderStep(session: Session, providerId: string): Promise<MethodRefusal[]> {
-  await running(session).stop();
-  session.running = undefined;
-  const result = await session.host.installProvider(providerId);
-  session.report.installed.push(...result.installed);
-  session.report.enabled.push(...result.enabled);
-  session.running = await session.host.start();
-  return result.unavailable.map(({ detail, fix }) => ({ method: providerId, detail, fix }));
-}
-
-type PlanStep = { kind: "install-provider"; providerId: string } | { kind: "install"; name: string; options?: object };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** @implNote The runtime answers `{ "install-provider": <catalog entry> }` or `{ "install": { method, package } }`; anything else is refused rather than guessed at. */
-function readStep(step: Record<string, unknown>): PlanStep | undefined {
-  const provider = step["install-provider"];
-  if (isRecord(provider) && typeof provider.id === "string") return { kind: "install-provider", providerId: provider.id };
-  const install = step.install;
-  if (!isRecord(install) || !isRecord(install.package) || typeof install.package.name !== "string") return undefined;
-  return { kind: "install", name: install.package.name, ...(isRecord(install.package.options) ? { options: install.package.options } : {}) };
+/** @implNote A provider's answer wins over PATH, so an application a provider reports is recorded under that provider's method. */
+function detectedOrigin(application: LoaderApplication, detections: MethodDetection[]): ApplicationOrigin {
+  const found = detections.find((detection): detection is Extract<MethodDetection, { answer: unknown }> => detection.item === application.id && "answer" in detection && detection.answer.installed);
+  if (found === undefined) return { method: PATH_METHOD };
+  const { version } = found.answer;
+  return { method: found.method, package: found.package, ...(found.options === undefined ? {} : { options: found.options }), ...(version === undefined ? {} : { version }) };
 }
 
 /** @implNote A provider that could not be installed ends the plan before its install step, which would only be refused for want of the provider. */
 async function carryOut(session: Session, application: LoaderApplication, method: string, steps: Array<Record<string, unknown>>): Promise<ApplicationReport> {
+  let installedStep: Extract<PlanStep, { kind: "install" }> | undefined;
   for (const raw of steps) {
     const step = readStep(raw);
     if (step === undefined) return failed(application, method, `the install plan has a step this installer cannot read: ${JSON.stringify(raw)}`, "choose another method");
@@ -164,14 +131,16 @@ async function carryOut(session: Session, application: LoaderApplication, method
       if (refusals.length > 0) return failed(application, method, refusals[0]?.detail ?? "", refusals[0]?.fix ?? "");
       continue;
     }
-    const answer = await operate(running(session), method, "install", step.name, step.options);
+    const answer = await operate(runningOf(session), method, "install", step.name, step.options);
     if (!answer.ok) return failed(application, method, answer.detail, answer.fix);
+    installedStep = step;
   }
-  return { id: application.id, state: "installed", installedThrough: method };
+  const origin = installedStep === undefined ? { method } : await installedOrigin(runningOf(session), application, method, installedStep);
+  return { id: application.id, state: "installed", installedThrough: method, origin };
 }
 
 async function installThrough(session: Session, application: LoaderApplication, offered: string[], method: string): Promise<ApplicationReport> {
-  const planned = stepsOf(session, application, offered, method);
+  const planned = planSteps(runningOf(session), application, offered, method, session.providers);
   if ("detail" in planned) return failed(application, method, planned.detail, planned.fix);
   return carryOut(session, application, method, planned.steps);
 }
@@ -187,11 +156,16 @@ async function resolveOne(session: Session, application: LoaderApplication, offe
   return withRefusals(await installThrough(session, application, offer.offered, method), offer.unavailable);
 }
 
-async function stateOfEach(session: Session, applications: LoaderApplication[]): Promise<Map<string, string | undefined>> {
-  const current = running(session);
+interface ApplicationStates {
+  states: Map<string, string | undefined>;
+  detections: MethodDetection[];
+}
+
+async function stateOfEach(session: Session, applications: LoaderApplication[]): Promise<ApplicationStates> {
+  const current = runningOf(session);
   const detections = (await Promise.all(applications.map(({ id, packages }) => detectThroughMethods(current, id, packages)))).flat();
   const rows = applicationList(current.runtime, session.request.catalog, current.places, session.request.environment, detections);
-  return new Map(rows.map((row) => [row.id, row.state]));
+  return { states: new Map(rows.map((row) => [row.id, row.state])), detections };
 }
 
 interface Pending {
@@ -199,15 +173,19 @@ interface Pending {
   offer: ApplicationOffer;
 }
 
+function settledRow(application: LoaderApplication, state: string | undefined, detections: MethodDetection[]): ApplicationReport {
+  return state === "detected" ? { id: application.id, state: "detected", origin: detectedOrigin(application, detections) } : { id: application.id, state: "installed" };
+}
+
 /** @implNote Every flag is checked against the offers before the first install, so a refused flag leaves nothing half done. */
 async function resolveAll(session: Session): Promise<ApplicationReport[]> {
   const applications = applicationsOf(session.request.catalog);
-  const states = await stateOfEach(session, applications);
+  const { states, detections } = await stateOfEach(session, applications);
   const pending = new Map<string, Pending>();
   for (const application of applications) {
     const state = states.get(application.id);
     if (state === "installed" || state === "detected") continue;
-    const offer = offerFor(running(session), application, session.providers, session.platformKey);
+    const offer = offerFor(runningOf(session), application, session.providers, session.platformKey);
     const flagged = session.request.choices[application.id];
     if (flagged !== undefined) checkFlaggedMethod(application, flagged, offer.offered);
     pending.set(application.id, { application, offer });
@@ -216,7 +194,7 @@ async function resolveAll(session: Session): Promise<ApplicationReport[]> {
   for (const application of applications) {
     const waiting = pending.get(application.id);
     const state = states.get(application.id);
-    rows.push(waiting === undefined ? { id: application.id, state: state === "detected" ? "detected" : "installed" } : await resolveOne(session, waiting.application, waiting.offer));
+    rows.push(waiting === undefined ? settledRow(application, state, detections) : await resolveOne(session, waiting.application, waiting.offer));
   }
   return rows;
 }

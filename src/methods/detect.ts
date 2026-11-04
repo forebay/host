@@ -22,7 +22,7 @@ async function detectOne(running: RunningHost, item: string, provider: MethodPro
   const request = { package: mapped.name, ...(mapped.options === undefined ? {} : { options: mapped.options }) };
   const asked = await askProvider<InstallMethodDetectAnswer>(running, provider, "detect", request);
   if (!asked.ok) return { method: provider.method, item, refused: asked.refused };
-  return { method: provider.method, item, package: mapped.name, answer: asked.answer };
+  return { method: provider.method, item, package: mapped.name, ...(mapped.options === undefined ? {} : { options: mapped.options }), answer: asked.answer };
 }
 
 function shadowedDetection(item: string, provider: MethodProvider): MethodDetection {
@@ -42,4 +42,11 @@ export async function detectThroughMethods(running: RunningHost, item: string, m
     return provider.shadowedBy === undefined ? detectOne(running, item, provider, mapped) : shadowedDetection(item, provider);
   });
   return (await Promise.all(detections)).filter((detection): detection is MethodDetection => detection !== undefined);
+}
+
+/** Asks the provider serving `method` about exactly the package an install recorded, whatever the mapping says now. */
+export async function detectRecorded(running: RunningHost, item: string, method: string, packageName: string, options?: object): Promise<MethodDetection> {
+  const provider = installMethodProviders(running).find((candidate) => candidate.method === method && candidate.shadowedBy === undefined);
+  if (provider === undefined) return { method, item, refused: `no installed plugin provides the ${method} install method` };
+  return detectOne(running, item, provider, { name: packageName, ...(options === undefined ? {} : { options }) });
 }

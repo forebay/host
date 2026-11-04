@@ -1,11 +1,21 @@
 import type { InstalledVersion, InstallRefusal } from "../cache/install-version.js";
 import type { RefusedCommand } from "../registration.js";
 
+/** The route an application came by: an install method and the package under it, or `path` for a binary nothing recorded. */
+export interface ApplicationOrigin {
+  method: string;
+  package?: string;
+  options?: object;
+  version?: string;
+}
+
 /** What the install did about one catalog application: `installed` covers one already installed and one it just installed through `installedThrough`. */
 export interface ApplicationReport {
   id: string;
   state: "installed" | "detected" | "skipped" | "missing" | "unavailable" | "failed";
   installedThrough?: string;
+  /** How the application got here, for a row that is installed or detected by this run; the loader's registration records it. */
+  origin?: ApplicationOrigin;
   /** The methods that could be chosen, in the order they were offered. */
   offered?: string[];
   /** The exact flag that installs it through the first offered method, for a run with no terminal. */
