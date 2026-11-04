@@ -47,13 +47,30 @@ function routeRefusal(application: RecordedApplication["application"], verb: str
   return undefined;
 }
 
-async function refreshVersion(session: ProviderSession, runtime: Runtime, places: HostPlaces, recorded: RecordedApplication): Promise<void> {
+type Registration = Parameters<Runtime["registry"]["register"]>[0]["registration"];
+
+function isRegistration(value: { [key: string]: unknown }): value is Registration {
+  return typeof value.id === "string" && value.kind === "host" && typeof value.version === "string" && typeof value.provenance === "object" && value.provenance !== null && typeof value.requiresCommand === "boolean";
+}
+
+/**
+ * @implNote `registry.register` replaces the registration's `application` whole, so the current
+ * registration is read again right before the write and only `application.provenance.version`
+ * differs from it; a change made since the operation began is kept.
+ */
+function recordVersion(runtime: Runtime, places: HostPlaces, loaderId: string, version: string): void {
+  const current = recordedApplication(runtime, places, loaderId);
+  if (!("application" in current) || current.application.provenance === undefined || !isRegistration(current.registration)) return;
+  const provenance = { ...current.application.provenance, version };
+  runtime.registry.register({ places, registration: { ...current.registration, application: { ...current.application, provenance } } });
+}
+
+async function refreshVersion(session: ProviderSession, runtime: Runtime, places: HostPlaces, recorded: RecordedApplication, loaderId: string): Promise<void> {
   const { provenance } = recorded.application;
   if (provenance?.package === undefined || session.running === undefined) return;
   const detection = await detectRecorded(session.running, recorded.application.id, provenance.method, provenance.package, provenance.options);
   if (!("answer" in detection) || !detection.answer.installed || detection.answer.version === undefined) return;
-  const application = { ...recorded.application, provenance: { ...provenance, version: detection.answer.version } };
-  runtime.registry.register({ places, registration: { ...recorded.registration, application } as never });
+  recordVersion(runtime, places, loaderId, detection.answer.version);
 }
 
 async function throughRecordedMethod(runtime: Runtime, places: HostPlaces, loaderId: string, verb: "update" | "remove", route: ApplicationRoute): Promise<ApplicationOperation> {
@@ -69,7 +86,7 @@ async function throughRecordedMethod(runtime: Runtime, places: HostPlaces, loade
     if (missing !== undefined) return refusal(missing.detail, missing.fix);
     const answer = await operate(runningOf(session), provenance.method, verb, provenance.package, provenance.options);
     if (!answer.ok) return answer;
-    if (verb === "update") await refreshVersion(session, runtime, places, recorded);
+    if (verb === "update") await refreshVersion(session, runtime, places, recorded, loaderId);
     return report.installed.length > 0 ? { ok: true, providerInstalled: report.installed[0]?.id } : { ok: true };
   } finally {
     await session.running?.stop();
