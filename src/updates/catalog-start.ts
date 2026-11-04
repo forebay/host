@@ -2,6 +2,7 @@ import { cacheBundleSource } from "../cache/cache-bundle-source.js";
 import type { CacheBundleSource } from "../cache/cache-bundle-source.js";
 import { defaultFetcher } from "../cache/fetcher.js";
 import type { Fetcher } from "../cache/fetcher.js";
+import { FOREBAY_HOST_ID } from "../install/forebay-host.js";
 import type { CatalogSource } from "../catalog/sources.js";
 import type { HostPlaces } from "../context/places.js";
 import { disabledPlugins, enabledPlugins, pinnedVersions } from "../plugins/enabled.js";
@@ -53,6 +54,19 @@ function candidatesOf(settings: Record<string, unknown>, defaults: Record<string
 }
 
 /**
+ * The host bundles a start keeps current: its own, and forebay-host, which every command boots
+ * through, each held to its pin.
+ *
+ * @implNote Only a start that checks for updates schedules them; `status` and the hook are one-shot
+ * and start no update check, so a new host version reaches the next start through a launch, the
+ * session host or a background host.
+ */
+function hostsToKeepCurrent(settings: Record<string, unknown>, hostId: string): EnabledPlugin[] {
+  const pins = pinnedVersions(settings);
+  return [...new Set([hostId, FOREBAY_HOST_ID])].map((id) => (Object.hasOwn(pins, id) ? { id, pin: pins[id] as string } : { id }));
+}
+
+/**
  * Resolves this start's bundles from the cache with no request, and records them as this host's
  * references and as this start's own run record, which no other start of the host can overwrite.
  *
@@ -80,6 +94,7 @@ export function catalogStart(catalog: HostCatalog, places: HostPlaces, hostId: s
         transport: catalog.transport ?? defaultCatalogTransport(),
         fetcher: catalog.fetcher ?? defaultFetcher(),
         enabled,
+        hosts: hostsToKeepCurrent(settings, hostId),
         hostId,
         run: recorded,
         kept,

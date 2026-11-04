@@ -1,9 +1,11 @@
+import { hintHostVersion } from "../boot/boot-hint.js";
 import type { BundleProblem } from "../cache/cache-bundle-source.js";
 import { CacheRefusal } from "../cache/cache-refusal.js";
 import type { Fetcher } from "../cache/fetcher.js";
 import { installVersion } from "../cache/install-version.js";
 import type { Catalog, CatalogItem } from "../catalog/catalog.js";
 import type { CatalogSource } from "../catalog/sources.js";
+import { FOREBAY_HOST_ID } from "../install/forebay-host.js";
 import type { EnabledPlugin } from "../plugins/enabled.js";
 import type { StatusRefusal } from "../status.js";
 import { checkCatalog } from "./check.js";
@@ -34,6 +36,8 @@ export interface UpdatePlan {
   transport: CatalogTransport;
   fetcher: Fetcher;
   enabled: EnabledPlugin[];
+  /** The host bundles kept on the catalog's version, each held to its pin: a newer one is fetched and switched to on the next start. */
+  hosts: EnabledPlugin[];
   hostId: string;
   /** The versions this start runs, recorded again beside what the update schedules for the next. */
   run: Record<string, string>;
@@ -73,11 +77,28 @@ function stoppable(plan: UpdatePlan, signal: AbortSignal): { transport: CatalogT
   };
 }
 
+/**
+ * The host versions to switch to: each host's pin, else the catalog's `latest`, where it differs
+ * from the version running, installed or not.
+ *
+ * @implNote A start runs the version its registration and references name rather than resolving a
+ * host bundle as it does a plugin, so a host's new version must be scheduled even when it is
+ * already in the cache.
+ */
+function hostTargets(plan: UpdatePlan, catalog: Catalog): Target[] {
+  return plan.hosts.flatMap(({ id, pin }) => {
+    const item = itemOf(catalog, id);
+    if (item?.kind !== "host") return [];
+    const version = pin ?? item.latest;
+    return Object.hasOwn(item.versions, version) && plan.run[id] !== version ? [{ id, version }] : [];
+  });
+}
+
 function targetsOf(plan: UpdatePlan, catalog: Catalog, problems: BundleProblem[]): Target[] {
   const scheduled = resolveVersions(catalog, plan.enabled, installedVersions(plan.cache)).fetch;
   const repairs = problems.map(({ id, version }) => ({ id, version }));
   const seen = new Set<string>();
-  return [...repairs, ...scheduled].filter(({ id, version }) => {
+  return [...repairs, ...scheduled, ...hostTargets(plan, catalog)].filter(({ id, version }) => {
     const key = `${id}@${version}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -87,6 +108,11 @@ function targetsOf(plan: UpdatePlan, catalog: Catalog, problems: BundleProblem[]
 
 function nextOf(targets: Target[], run: Record<string, string>): Record<string, string> {
   return Object.fromEntries(targets.filter(({ id, version }) => !(Object.hasOwn(run, id) && run[id] === version)).map(({ id, version }) => [id, version]));
+}
+
+/** @implNote Every command and background host boots the forebay-host version its boot hint names, so a fetched one is switched to there, never before it is installed intact. */
+function isForebayHostSwitch(plan: UpdatePlan, target: Target): boolean {
+  return target.id === FOREBAY_HOST_ID && plan.hosts.some(({ id }) => id === FOREBAY_HOST_ID) && plan.run[FOREBAY_HOST_ID] !== target.version;
 }
 
 function itemOf(catalog: Catalog, id: string): CatalogItem | undefined {
@@ -101,6 +127,7 @@ async function install(plan: UpdatePlan, catalog: Catalog, target: Target, fetch
     return;
   }
   const answer = await installVersion(plan.cache, target.id, item, target.version, fetcher);
+  if (answer.ok && isForebayHostSwitch(plan, target)) hintHostVersion(plan.cache, FOREBAY_HOST_ID, target.version);
   if (answer.ok) progress.fetched.push(name);
   else if (!signal.aborted) progress.refused.push({ id: name, detail: answer.detail, fix: answer.fix });
 }

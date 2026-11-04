@@ -1,5 +1,7 @@
+import { join } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
 import { CacheRefusal } from "../cache/cache-refusal.js";
+import { checkInstalled } from "../cache/install-marker.js";
 import type { Catalog } from "../catalog/catalog.js";
 import type { HostLibraries } from "../runtime/cached-runtime.js";
 import type { RuntimeSource } from "../runtime/open.js";
@@ -43,9 +45,15 @@ function changedFrom(loaded: HostLibraries, resolved: Record<string, string>): R
   return Object.fromEntries(Object.entries(resolved).filter(([id, version]) => loaded[id as keyof HostLibraries] !== version));
 }
 
+/** @implNote A boot hint naming a version not yet installed would refuse every command, so a scheduled version is hinted only once it is installed intact. */
+function hintedHostVersion(cache: string, hostId: string, scheduled: string | undefined, running: string | undefined): string | undefined {
+  if (scheduled !== undefined && checkInstalled(join(cache, "bundles", hostId, scheduled)).kind === "intact") return scheduled;
+  return running;
+}
+
 /**
  * Resolves the runtime and koffi the next start loads, records them for it with the host bundle
- * version it runs (the one scheduled, else the one running), and answers the
+ * version it runs (the one scheduled once installed, else the one running), and answers the
  * references that keep both those and what runs now from any sweep, beside what the host already
  * scheduled for its next start.
  */
@@ -54,7 +62,7 @@ export function hostLibraryReferences(resolution: LibraryResolution): HostRefere
   const resolved = resolveHostLibraries(resolution.catalog, resolution.settings, cache, resolution.platformKey ?? currentPlatformKey());
   const scheduled = { ...readHostReferences(state, hostId).next, ...changedFrom(loaded, resolved) };
   const next = hostLibrariesOf(resolved);
-  if (next !== undefined) recordBootLibraries(cache, hostId, next, scheduled[hostId] ?? resolution.running[hostId]);
+  if (next !== undefined) recordBootLibraries(cache, hostId, next, hintedHostVersion(cache, hostId, scheduled[hostId], resolution.running[hostId]));
   return { run: { ...resolution.running, [RUNTIME_ID]: loaded.runtime, [KOFFI_ID]: loaded.koffi }, next: scheduled };
 }
 

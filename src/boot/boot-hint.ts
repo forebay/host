@@ -55,6 +55,13 @@ export function writeBootHint(cache: string, hostId: string, libraries: HostLibr
   }
 }
 
+/** Makes `version` the host bundle the next start of `hostId` runs, keeping the libraries its hint names; a host whose hint names no runtime and koffi is left as it is. */
+export function hintHostVersion(cache: string, hostId: string, version: string): void {
+  const { runtime, koffi } = readBootHint(cache, hostId)?.libraries ?? {};
+  if (runtime === undefined || koffi === undefined) return;
+  writeBootHint(cache, hostId, { runtime, koffi }, version);
+}
+
 /**
  * Every `id@version` the hints in `cache` name: each host's runtime and koffi, and its own bundle
  * under the host id.
