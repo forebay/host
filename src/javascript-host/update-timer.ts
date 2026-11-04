@@ -27,6 +27,19 @@ function report(options: UpdateTimerOptions, answer: WorkerAnswer): void {
   for (const { id, message, fix } of (answer.answer as CheckAnswer).refused) options.writeError(`spisor could not update ${id}: ${message}\nfix: ${fix}\n`);
 }
 
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The check's answer, a check that throws or rejects answering `failed` like any other failed check. */
+async function answerOf(options: UpdateTimerOptions): Promise<WorkerAnswer> {
+  try {
+    return await options.check();
+  } catch (error) {
+    return { failed: messageOf(error) };
+  }
+}
+
 /**
  * Calls `updates.check` at once and then every hour, never two at once, writing a failed check and
  * every refused version to stderr.
@@ -38,7 +51,7 @@ export function startUpdateTimer(options: UpdateTimerOptions): UpdateTimer {
   let running: Promise<void> | null = null;
   let stopped = false;
   const tick = () => {
-    running ??= options.check().then((answer) => {
+    running ??= answerOf(options).then((answer) => {
       last = answer;
       running = null;
       if (!stopped) report(options, answer);

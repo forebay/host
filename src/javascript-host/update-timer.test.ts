@@ -46,4 +46,20 @@ describe("startUpdateTimer", () => {
     expect(written.join("")).toContain("the worker died");
     expect(written.join("")).toContain("viewer@2.0.0: the hash does not match\nfix: ask the publisher");
   });
+
+  it.each([
+    ["throws synchronously", () => {
+      throw new Error("no worker could be started");
+    }],
+    ["rejects", () => Promise.reject(new Error("no worker could be started"))],
+  ])("reports a check that %s, keeps ticking and stops cleanly", async (_how, failing) => {
+    const written: string[] = [];
+    const check = vi.fn(failing as () => Promise<WorkerAnswer>);
+    const timer = startUpdateTimer({ hostId: "host", check, writeError: (text) => written.push(text) });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(check).toHaveBeenCalledTimes(2);
+    expect(written.join("")).toContain("spisor could not check for updates of host: no worker could be started");
+    await expect(timer.stop()).resolves.toBeUndefined();
+  });
 });
