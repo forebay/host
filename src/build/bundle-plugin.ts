@@ -1,13 +1,14 @@
-import { copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { LoaderApplication } from "../loader/standard.js";
+import type { LoaderApplication } from "../loader-standard.js";
 import { readBundleManifest } from "./bundle-manifest.js";
 import type { BundleManifest } from "./bundle-manifest.js";
-import { bundleSource, checkImports, writeEntry } from "./esbuild-bundle.js";
+import { bundleSource, checkImports, writeEntry, writeFile } from "./esbuild-bundle.js";
 import type { Built } from "./esbuild-bundle.js";
 
 /** @implNote koffi carries a native module per platform, which is delivered as a library rather than inlined. */
 const EXTERNAL = ["koffi"];
+
+const RUNTIME = "javascript";
 
 /** A built item: its id, its version and each of its files, by relative path with `/` separators, as an absolute path. */
 export interface BundleOutput {
@@ -28,7 +29,8 @@ export interface BundledPlugin {
 
 function writeBundle(manifest: BundleManifest, out: string, built: Built): BundleOutput {
   const files = { ...writeEntry(out, manifest.entry, built), "plugin.json": join(out, "plugin.json") };
-  copyFileSync(manifest.path, files["plugin.json"]);
+  writeFile(files["plugin.json"], `${JSON.stringify({ ...manifest.fields, runtime: RUNTIME }, null, 2)}
+`);
   return { id: manifest.id, version: manifest.version, files, ...(manifest.installMethod === undefined ? {} : { installMethod: manifest.installMethod }) };
 }
 
@@ -42,13 +44,13 @@ export async function bundlePluginWith(repositoryRoot: string, outDirectory: str
 }
 
 /**
- * Bundles a plugin repository into one ESM file at its manifest's `entry`, beside a copy of its
- * `plugin.json`, every dependency inlined except `koffi`.
+ * Bundles a plugin repository into one ESM file at its manifest's `entry`, beside its `plugin.json`
+ * naming the `javascript` runtime, every dependency inlined except `koffi`.
  *
  * @remarks The source is the manifest's `bundle.entry` when it names one, else `src/index.ts`. A
  * `.js` entry gets a `package.json` of `{ "type": "module" }` beside it, listed among the files.
- * A manifest a catalog would refuse, or a bundle that would import anything but `koffi` and Node's
- * builtins at run time, is refused before anything is written.
+ * A manifest with no id, version or entry inside the bundle, or a bundle that would import
+ * anything but `koffi` and Node's builtins at run time, is refused before anything is written.
  */
 export async function bundlePlugin(repositoryRoot: string, outDirectory: string): Promise<BundleOutput> {
   return (await bundlePluginWith(repositoryRoot, outDirectory, EXTERNAL)).output;

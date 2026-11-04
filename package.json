@@ -4,9 +4,6 @@
   "private": true,
   "description": "Shared host every application is built from, for the forebay AI-proxy ecosystem.",
   "main": "dist/index.js",
-  "bin": {
-    "forebay-host": "dist/cli/main.js"
-  },
   "type": "module",
   "license": "MIT",
   "author": "intisy",
@@ -28,19 +25,17 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/embed-catalog-schema.mjs && tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
     "generate:runtime-types": "node siblings/typescript/scripts/generate-library-types.mjs siblings/library/runtime/library.json src/runtime/types.ts",
-    "test": "node scripts/embed-catalog-schema.mjs && tsc --noEmit -p tsconfig.json && vitest run"
+    "test": "tsc --noEmit -p tsconfig.json && vitest run"
   },
   "dependencies": {
     "@weivel/typescript": "file:./siblings/typescript",
-    "cross-spawn": "7.0.6",
     "esbuild": "0.28.2"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
-    "ajv": "8.17.1",
     "typescript": "5.7.2",
     "vitest": "3.2.7"
   },

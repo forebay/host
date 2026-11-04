@@ -45,7 +45,7 @@ export interface SecretsService {
 export const Secrets: ServiceType<SecretsService> = { id: "secrets" };
 
 export interface RegistryService {
-  register(argument: { places: { state: string; [key: string]: unknown }; registration: { id: string; kind: "host"; version: string; home?: string; application?: { [key: string]: unknown }; provenance: { method: string; version: string; location: string; os: string; architecture: string; installedAt: string; [key: string]: unknown }; requiresCommand: boolean; [key: string]: unknown }; [key: string]: unknown }): { registration: { [key: string]: unknown } };
+  register(argument: { places: { state: string; [key: string]: unknown }; registration: { id: string; kind: "host"; version: string; home?: string; application?: { [key: string]: unknown }; provenance: { method: string; version: string; location: string; os: string; architecture: string; installedAt: string; [key: string]: unknown }; requiresCommand: boolean; start?: { runtime: "javascript" | "jvm" | "native"; entry: string; [key: string]: unknown }; [key: string]: unknown }; [key: string]: unknown }): { registration: { [key: string]: unknown } };
   get(argument: { places: { state: string; [key: string]: unknown }; id: string; [key: string]: unknown }): { registration?: { [key: string]: unknown } };
   list(argument: { places: { state: string; [key: string]: unknown }; [key: string]: unknown }): { hosts: { registration: { [key: string]: unknown }; orphan: boolean }[]; unreadable: string[] };
   forget(argument: { places: { state: string; cache: string; [key: string]: unknown }; id: string; [key: string]: unknown }): { forgotten: boolean };
@@ -53,25 +53,49 @@ export interface RegistryService {
 
 export const Registry: ServiceType<RegistryService> = { id: "registry" };
 
-export interface ChangesService {
-  apply(argument: { places: { state: string; [key: string]: unknown }; host: string; change: { kind: "file" | "directory" | "json-key" | "profile-line" | "path-entry"; path?: string; content?: string; executable?: boolean; file?: string; key?: string[]; value?: unknown; line?: string; directory?: string; home?: string; source?: string; create?: boolean; shell?: string; [key: string]: unknown }; [key: string]: unknown }): { recorded: boolean; sequence?: number };
-  reverse(argument: { places: { state: string; [key: string]: unknown }; host: string; [key: string]: unknown }): { reversed: number; drifted: { sequence: number; kind: string; detail: string }[] };
+export interface CacheService {
+  install(argument: { cache: string; id: string; item: { [key: string]: unknown }; version: string; platform?: string; [key: string]: unknown }): { id: string; version: string; directory: string; fetched: string[]; cached: string[] };
+  installed(argument: { cache: string; platform?: string; [key: string]: unknown }): { bundles: { [key: string]: string[] }; libraries: { [key: string]: string[] } };
+  check(argument: { directory: string; [key: string]: unknown }): { kind: "absent" | "intact" | "damaged"; detail?: string; fix?: string; file?: string };
+  platform(argument: { [key: string]: unknown }): { platform: string };
+  sweep(argument: { cache: string; state: string; [key: string]: unknown }): { removed: string[] };
 }
 
-export const Changes: ServiceType<ChangesService> = { id: "changes" };
+export const Cache: ServiceType<CacheService> = { id: "cache" };
 
-export interface CommandsService {
-  request(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; arguments?: string[]; [key: string]: unknown }): { name?: string };
-  rename(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; from: string; to: string; [key: string]: unknown }): { name: string };
-  delete(argument: { places: { state: string; [key: string]: unknown }; host: string; name: string; [key: string]: unknown }): { deleted: true };
-  add(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; arguments?: string[]; [key: string]: unknown }): { name: string };
+export interface UpdatesService {
+  apply(argument: { places: { state: string; cache: string; [key: string]: unknown }; hostId: string; settings?: { [key: string]: unknown }; defaults?: { [key: string]: string }; running?: { [key: string]: string }; libraries?: string[]; platform?: string; [key: string]: unknown }): { plugins: { [key: string]: string }; run: { [key: string]: string }; next: { [key: string]: string }; rollback: { [key: string]: string }; unrecorded: { message: string; fix: string }[]; runRecord: string };
+  check(argument: { places: { state: string; cache: string; [key: string]: unknown }; hostId: string; now: string; settings?: { [key: string]: unknown }; defaults?: { [key: string]: string }; problems?: { id: string; version: string; [key: string]: unknown }[]; platform?: string; [key: string]: unknown }): { checked: ({ kind: "skipped" | "unchanged" | "changed" | "failed"; detail?: string })[]; fetched: string[]; refused: { id: string; message: string; fix: string }[]; removed: string[] };
+  rollback(argument: { places: { state: string; cache: string; [key: string]: unknown }; hostId: string; item: string; [key: string]: unknown }): { run: { [key: string]: string }; next: { [key: string]: string }; rollback: { [key: string]: string } };
 }
 
-export const Commands: ServiceType<CommandsService> = { id: "commands" };
+export const Updates: ServiceType<UpdatesService> = { id: "updates" };
 
-export interface InstallService {
-  packages(argument: { places: { portable: string; [key: string]: unknown }; item: string; manifestPackages?: { [key: string]: unknown }; [key: string]: unknown }): { packages: { [key: string]: unknown } };
-  plan(argument: { places: { portable: string; [key: string]: unknown }; item: string; manifestPackages?: { [key: string]: unknown }; methods: string[]; chosen: string; installedProviders?: string[]; catalog?: { [key: string]: unknown }[]; [key: string]: unknown }): { steps: { [key: string]: unknown }[] };
+export interface ProcessesService {
+  hold(argument: { state: string; hostId: string; holder: number; start: { executable: string; arguments?: string[]; environment?: { [key: string]: string }; directory?: string; [key: string]: unknown }; [key: string]: unknown }): { pid: number; started: boolean; outsideJob?: boolean };
+  release(argument: { state: string; hostId: string; holder: number; [key: string]: unknown }): { holders: number[] };
+  prune(argument: { state: string; hostId: string; self: number; now?: number; checkMilliseconds?: number; [key: string]: unknown }): { exit: boolean };
+  recordRun(argument: { state: string; hostId: string; run: { [key: string]: string }; checkMilliseconds?: number; record?: string; [key: string]: unknown }): { record: string };
+  liveRuns(argument: { state: string; now?: number; [key: string]: unknown }): { runs: { [key: string]: string }[] };
+  removeRuns(argument: { state: string; hostId: string; record?: string; [key: string]: unknown }): { [key: string]: never };
 }
 
-export const Install: ServiceType<InstallService> = { id: "install" };
+export const Processes: ServiceType<ProcessesService> = { id: "processes" };
+
+export interface LoaderService {
+  check(argument: { standard: unknown; [key: string]: unknown }): { issues: { path: string; detail: string; fix: string }[] };
+  home(argument: { home: { envOverride?: string; nativeEnv?: string; xdgSubdir?: string; candidates: string[]; [key: string]: unknown }; environment: { [key: string]: string }; [key: string]: unknown }): { home: string; source: "override" | "native" | "xdg" | "candidate" | "default" };
+  installed(argument: { places: { cache: string; [key: string]: unknown }; id: string; version: string; [key: string]: unknown }): { standard: { [key: string]: unknown } };
+}
+
+export const Loader: ServiceType<LoaderService> = { id: "loader" };
+
+export interface UiService {
+  navigation(argument: { descriptions: { id: string; [key: string]: unknown }[]; ui: { [key: string]: unknown }; [key: string]: unknown }): { entries: ({ plugin: string; kind: "view" | "settings" | "action"; id: string; title?: string; pinned: boolean })[]; preferences: { [key: string]: unknown } };
+  settingsView(argument: { description: { id: string; [key: string]: unknown }; [key: string]: unknown }): { title: string; nodes: ({ id: string; parent?: string; component: "form" | "field"; field?: string; label?: string })[] };
+  plan(argument: { descriptions: { id: string; [key: string]: unknown }[]; screen: { plugin: string; kind: "view" | "settings" | "action"; id?: string; [key: string]: unknown }; answers?: { plugin: string; binding: { service: string; method: string; [key: string]: unknown }; arguments: { [key: string]: unknown }; answer?: unknown; checked?: { against: string; members?: string[]; issues: { message: string; fix: string; path?: string; [key: string]: unknown }[]; [key: string]: unknown }[]; error?: { detail: string; fix: string; [key: string]: unknown }; unavailable?: true; [key: string]: unknown }[]; [key: string]: unknown }): { calls?: { plugin: string; binding: { service: string; method: string }; arguments: { [key: string]: unknown }; checks: { against: string; members?: string[] }[] }[]; done?: true };
+  render(argument: { descriptions: { id: string; [key: string]: unknown }[]; screen: { plugin: string; kind: "view" | "settings" | "action"; id?: string; [key: string]: unknown }; answers: { plugin: string; binding: { service: string; method: string; [key: string]: unknown }; arguments: { [key: string]: unknown }; answer?: unknown; checked?: { against: string; members?: string[]; issues: { message: string; fix: string; path?: string; [key: string]: unknown }[]; [key: string]: unknown }[]; error?: { detail: string; fix: string; [key: string]: unknown }; unavailable?: true; [key: string]: unknown }[]; [key: string]: unknown }): { plugin: string; kind: "view" | "settings"; view?: string; title?: string; nodes: ({ id: string; component: string; parent?: string; state: "ready" | "error" | "unavailable"; data?: unknown; error?: { detail: string; fix: string; path?: string }; props: { [key: string]: unknown } })[] };
+  pluginList(argument: { installed: { id: string; [key: string]: unknown }[]; detected: { id: string; [key: string]: unknown }[]; available: { id: string; [key: string]: unknown }[]; [key: string]: unknown }): { kind: "host"; title: string; nodes: ({ id: string; component: "table"; state: "ready"; data: { items: ({ id: string; state: "installed" | "detected" | "available"; unavailable?: true; install?: true; [key: string]: unknown })[] }; props: { [key: string]: unknown } })[] };
+}
+
+export const Ui: ServiceType<UiService> = { id: "ui" };

@@ -14,7 +14,7 @@ jobs:
       extra_repositories: |
         weivel/model siblings/model 606988fb178b04d3f53835e6d982c09f31081ef1
         weivel/typescript siblings/typescript 00b061bf8acb02c51cd576ecf3074c8e1a15b6d8
-        spisor/library siblings/library f8360234f2500b5b636931a54a74e5b465409ba0
+        spisor/library siblings/library 373888ae2bd6186a485acda2ef1e73f784eadb3e
       node_install: npm ci --prefix siblings/model && npm ci --prefix siblings/typescript && npm ci
       node_build: cmake -S siblings/library -B siblings/library/build && cmake --build siblings/library/build --config Release && npm run build --prefix siblings/typescript && npm run build
       node_test: npm test

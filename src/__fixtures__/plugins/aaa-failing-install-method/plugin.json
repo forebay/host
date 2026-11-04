@@ -1,8 +1,0 @@
-{
-  "id": "aaa-failing-install-method",
-  "api": 1,
-  "version": "1.0.0",
-  "entry": "index.js",
-  "installMethod": "fake",
-  "services": { "provides": ["aaa-failing-install-method:install-method"] }
-}
