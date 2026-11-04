@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { startSessionHost } from "../entries/opencode.js";
+import { isPluginError } from "@weivel/typescript/engine";
 import { HostRefusal } from "../host-refusal.js";
 import type { JavascriptHost } from "./start-javascript-host.js";
 import { startJavascriptHost } from "./start-javascript-host.js";
@@ -18,10 +19,11 @@ function writeError(text: string): void {
   process.stderr.write(text);
 }
 
+/** A refusal's detail and fix, from a host refusal and a weivel plugin error alike, as OpenCode's entry reports one. */
 function refusalText(hostId: string, error: unknown): string {
-  const detail = error instanceof HostRefusal ? error.detail : error instanceof Error ? error.message : String(error);
-  const fix = error instanceof HostRefusal ? error.fix : REINSTALL_FIX;
-  return `spisor did not start ${hostId}: ${detail}\nfix: ${fix}\n`;
+  const refusal = error instanceof HostRefusal || isPluginError(error) ? error : undefined;
+  const detail = refusal?.detail ?? (error instanceof Error ? error.message : String(error));
+  return `spisor did not start ${hostId}: ${detail}\nfix: ${refusal?.fix ?? REINSTALL_FIX}\n`;
 }
 
 function isThisProcessEntry(): boolean {
@@ -55,7 +57,7 @@ async function runHeldHost(hostId: string): Promise<void> {
   };
   for (const signal of STOP_SIGNALS) process.on(signal, stop);
   try {
-    host = await startJavascriptHost({ hostId, bundleFile: bundleFile(), environment: processEnvironment(), held: true, onUnheld: () => process.exit(0), writeError });
+    host = await startJavascriptHost({ hostId, bundleFile: bundleFile(), environment: processEnvironment(), held: true, onUnheld: (exitCode) => process.exit(exitCode), writeError });
   } catch (error) {
     writeError(refusalText(hostId, error));
     process.exit(1);

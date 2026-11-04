@@ -53,6 +53,52 @@ export interface RegistryService {
 
 export const Registry: ServiceType<RegistryService> = { id: "registry" };
 
+export interface ChangesService {
+  apply(argument: { places: { state: string; [key: string]: unknown }; host: string; change: { kind: "file" | "directory" | "json-key" | "profile-line" | "path-entry"; path?: string; content?: string; executable?: boolean; file?: string; key?: string[]; value?: unknown; line?: string; directory?: string; home?: string; source?: string; create?: boolean; shell?: string; [key: string]: unknown }; [key: string]: unknown }): { recorded: boolean; sequence?: number };
+  reverse(argument: { places: { state: string; [key: string]: unknown }; host: string; [key: string]: unknown }): { reversed: number; drifted: { sequence: number; kind: string; detail: string }[] };
+}
+
+export const Changes: ServiceType<ChangesService> = { id: "changes" };
+
+export interface CommandsService {
+  request(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; arguments?: string[]; [key: string]: unknown }): { name?: string };
+  rename(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; from: string; to: string; [key: string]: unknown }): { name: string };
+  delete(argument: { places: { state: string; [key: string]: unknown }; host: string; name: string; [key: string]: unknown }): { deleted: true };
+  add(argument: { places: { state: string; [key: string]: unknown }; environment: { [key: string]: unknown }; host: string; home: string; name: string; target: string; arguments?: string[]; [key: string]: unknown }): { name: string };
+}
+
+export const Commands: ServiceType<CommandsService> = { id: "commands" };
+
+export interface InstallService {
+  packages(argument: { places: { portable: string; [key: string]: unknown }; item: string; manifestPackages?: { [key: string]: unknown }; [key: string]: unknown }): { packages: { [key: string]: unknown } };
+  plan(argument: { places: { portable: string; [key: string]: unknown }; item: string; manifestPackages?: { [key: string]: unknown }; methods: string[]; chosen: string; installedProviders?: string[]; catalog?: { [key: string]: unknown }[]; [key: string]: unknown }): { steps: { [key: string]: unknown }[] };
+  detect(argument: { places: { portable: string; cache: string; [key: string]: unknown }; item: string; manifestPackages?: { [key: string]: unknown }; [key: string]: unknown }): { detections: { method: string; item: string; package?: string; options?: { [key: string]: unknown }; answer?: { installed: boolean; version?: string; [key: string]: unknown }; refused?: string }[] };
+  entry(argument: { places: { state: string; cache: string; [key: string]: unknown }; loader: { id: string; application: { id: string; label?: string; [key: string]: unknown }; home: string; [key: string]: unknown }; [key: string]: unknown }): { written: boolean; sequences?: number[]; message?: string; fix?: string };
+  runtime(argument: { cache: string; platform?: string; environment: { [key: string]: string }; [key: string]: unknown }): { name: "node"; version: string; executable: string; fetched: boolean; source: "path" | "acquired" };
+  ecosystem(argument: { sources: ({ kind: "local"; path: string; [key: string]: unknown } | { kind: "https"; url: string; [key: string]: unknown })[]; places: { portable: string; state: string; cache: string; [key: string]: unknown }; environment: { [key: string]: string }; choices?: { [key: string]: string }; defaults?: string[]; requested?: string[]; platform?: string; [key: string]: unknown }): { installed: { id: string; version: string }[]; cached: string[]; unavailable: { id: string; message: string; fix: string }[]; enabled: string[]; applications: ({ id: string; state: "installed" | "detected" | "skipped" | "missing" | "unavailable" | "failed"; installedThrough?: string; origin?: { method: string; package?: string; options?: { [key: string]: unknown }; version?: string }; offered?: string[]; flag?: string; unavailable?: { method: string; message: string; fix: string }[] })[]; loaders: { id: string; application: string; home: string; commands: string[]; refusedCommands: { name: string; detail: string; fix: string }[]; entry: { written: boolean; message?: string; fix?: string } }[]; missing: { application: string; methods: string[] }[]; javascript?: { name: "node"; version: string; executable: string; fetched: boolean; source: "path" | "acquired" } };
+  application(argument: { places: { portable: string; state: string; cache: string; [key: string]: unknown }; loader: string; operation: "update" | "remove"; [key: string]: unknown }): { operation: "update" | "remove"; version?: string; unrecorded?: { message: string; fix: string } };
+  registerLoader(argument: { places: { portable: string; state: string; cache: string; [key: string]: unknown }; environment: { [key: string]: string }; id: string; version: string; [key: string]: unknown }): { provenance: { [key: string]: unknown }; commands: string[]; refusedCommands: { name: string; detail: string; fix: string }[] };
+}
+
+export const Install: ServiceType<InstallService> = { id: "install" };
+
+export interface FetchService {
+  get(argument: { url: string; destination: string; sha256?: string; etag?: string; lastModified?: string; maxBytes?: number; timeoutSeconds?: number; [key: string]: unknown }): { outcome: "stored" | "not-modified"; sha256?: string; bytes?: number; etag?: string; lastModified?: string };
+}
+
+export const Fetch: ServiceType<FetchService> = { id: "fetch" };
+
+export interface CatalogService {
+  read(argument: { text: string; origin: string; [key: string]: unknown }): { catalog: { format: 1; items: { [key: string]: unknown }; [key: string]: unknown } };
+  sources(argument: { settings: { [key: string]: unknown }; [key: string]: unknown }): { sources: ({ kind: "local"; path: string; [key: string]: unknown } | { kind: "https"; url: string; [key: string]: unknown })[]; skipped: { index: number; detail: string }[] };
+  merge(argument: { catalogs: ({ source: { kind: "local"; path: string; [key: string]: unknown } | { kind: "https"; url: string; [key: string]: unknown }; catalog: { format: 1; items: { [key: string]: unknown }; [key: string]: unknown }; [key: string]: unknown })[]; [key: string]: unknown }): { catalog: { format: 1; items: { [key: string]: unknown }; [key: string]: unknown }; shadowed: ({ id: string; source: { kind: "local"; path: string; [key: string]: unknown } | { kind: "https"; url: string; [key: string]: unknown } })[] };
+  check(argument: { source: { kind: "local"; path: string; [key: string]: unknown } | { kind: "https"; url: string; [key: string]: unknown }; cache: string; now: string; intervalHours: number; [key: string]: unknown }): { kind: "skipped" | "unchanged" | "changed" | "failed"; catalog?: { format: 1; items: { [key: string]: unknown }; [key: string]: unknown }; detail?: string };
+  current(argument: { sources: ({ kind: "local"; path: string; [key: string]: unknown } | { kind: "https"; url: string; [key: string]: unknown })[]; cache: string; [key: string]: unknown }): { catalog: { format: 1; items: { [key: string]: unknown }; [key: string]: unknown } };
+  resolve(argument: { catalog: { format: 1; items: { [key: string]: unknown }; [key: string]: unknown }; enabled: { id: string; pin?: string; [key: string]: unknown }[]; installed: { [key: string]: string[] }; kind?: "plugin" | "host" | "library"; [key: string]: unknown }): { run: { [key: string]: string }; fetch: { id: string; version: string }[] };
+}
+
+export const Catalog: ServiceType<CatalogService> = { id: "catalog" };
+
 export interface CacheService {
   install(argument: { cache: string; id: string; item: { [key: string]: unknown }; version: string; platform?: string; [key: string]: unknown }): { id: string; version: string; directory: string; fetched: string[]; cached: string[] };
   installed(argument: { cache: string; platform?: string; [key: string]: unknown }): { bundles: { [key: string]: string[] }; libraries: { [key: string]: string[] } };
@@ -71,6 +117,14 @@ export interface UpdatesService {
 
 export const Updates: ServiceType<UpdatesService> = { id: "updates" };
 
+export interface BootService {
+  read(argument: { cache: string; hostId: string; [key: string]: unknown }): { hint?: { libraries: { [key: string]: string }; host?: string } };
+  write(argument: { cache: string; hostId: string; libraries: { [key: string]: string }; host?: string; state?: string; [key: string]: unknown }): { hint: { libraries: { [key: string]: string }; host?: string } };
+  resolve(argument: { cache: string; hostId?: string; arguments?: string[]; platform?: string; [key: string]: unknown }): { executable: string; arguments: string[]; version: string; directory: string };
+}
+
+export const Boot: ServiceType<BootService> = { id: "boot" };
+
 export interface ProcessesService {
   hold(argument: { state: string; hostId: string; holder: number; start: { executable: string; arguments?: string[]; environment?: { [key: string]: string }; directory?: string; [key: string]: unknown }; [key: string]: unknown }): { pid: number; started: boolean; outsideJob?: boolean };
   release(argument: { state: string; hostId: string; holder: number; [key: string]: unknown }): { holders: number[] };
@@ -82,6 +136,15 @@ export interface ProcessesService {
 
 export const Processes: ServiceType<ProcessesService> = { id: "processes" };
 
+export interface HostsService {
+  register(argument: { places: { state: string; [key: string]: unknown }; identity: { id: string; version: string; home?: string; application?: { [key: string]: unknown }; requiresCommand: boolean; commands: { name: string; target: string; arguments?: string[]; [key: string]: unknown }[]; start?: { runtime: "javascript" | "jvm" | "native"; entry: string; [key: string]: unknown }; [key: string]: unknown }; provenance: { [key: string]: unknown }; environment: { [key: string]: string }; [key: string]: unknown }): { provenance: { [key: string]: unknown }; commands: string[]; refusedCommands: { name: string; detail: string; fix: string }[] };
+  list(argument: { places: { state: string; [key: string]: unknown }; [key: string]: unknown }): { hosts: { registration: { [key: string]: unknown }; orphan: boolean }[]; unreadable: string[] };
+  remove(argument: { places: { state: string; cache: string; [key: string]: unknown }; id: string; [key: string]: unknown }): { reversed: number; drifted: unknown[]; forgotten: boolean };
+  provenance(argument: { origin: { method: string; package?: string; options?: { [key: string]: unknown }; version?: string; [key: string]: unknown }; application: { binary: string; [key: string]: unknown }; home: string; environment: { [key: string]: string }; now?: number; [key: string]: unknown }): { method: string; package?: string; options?: { [key: string]: unknown }; version?: string; location: string; os: string; architecture: string; installedAt: string };
+}
+
+export const Hosts: ServiceType<HostsService> = { id: "hosts" };
+
 export interface LoaderService {
   check(argument: { standard: unknown; [key: string]: unknown }): { issues: { path: string; detail: string; fix: string }[] };
   home(argument: { home: { envOverride?: string; nativeEnv?: string; xdgSubdir?: string; candidates: string[]; [key: string]: unknown }; environment: { [key: string]: string }; [key: string]: unknown }): { home: string; source: "override" | "native" | "xdg" | "candidate" | "default" };
@@ -89,6 +152,19 @@ export interface LoaderService {
 }
 
 export const Loader: ServiceType<LoaderService> = { id: "loader" };
+
+export interface DetectService {
+  onPath(argument: { binary: string; environment: { [key: string]: string }; [key: string]: unknown }): { path?: string };
+}
+
+export const Detect: ServiceType<DetectService> = { id: "detect" };
+
+export interface ListsService {
+  plugins(argument: { installed: { id: string; [key: string]: unknown }[]; detected: { id: string; [key: string]: unknown }[]; available: { id: string; [key: string]: unknown }[]; [key: string]: unknown }): { items: ({ id: string; state: "installed" | "detected" | "available"; [key: string]: unknown })[] };
+  applications(argument: { catalog: { items: { [key: string]: unknown }; [key: string]: unknown }; places: { state: string; [key: string]: unknown }; environment: { [key: string]: string }; detections: { method: string; item: string; package?: string; options?: { [key: string]: unknown }; answer?: { installed: boolean; version?: string; [key: string]: unknown }; refused?: string; [key: string]: unknown }[]; [key: string]: unknown }): { items: ({ id: string; label?: string; state: "installed" | "detected" | "available" })[] };
+}
+
+export const Lists: ServiceType<ListsService> = { id: "lists" };
 
 export interface UiService {
   navigation(argument: { descriptions: { id: string; [key: string]: unknown }[]; ui: { [key: string]: unknown }; [key: string]: unknown }): { entries: ({ plugin: string; kind: "view" | "settings" | "action"; id: string; title?: string; pinned: boolean })[]; preferences: { [key: string]: unknown } };

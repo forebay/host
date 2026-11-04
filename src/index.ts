@@ -10,7 +10,6 @@ export type { HostIdentity } from "./identity.js";
 export type { HostSettings } from "./host-settings.js";
 export { HostRefusal } from "./host-refusal.js";
 export { userHomeOf } from "./user-home.js";
-export { directoryBundles } from "./plugins/bundle-source.js";
 export type { BundleEntry, BundleSource } from "./plugins/bundle-source.js";
 export { cacheBundles } from "./plugins/cache-bundles.js";
 export type { BundleProblem, CacheBundles } from "./plugins/cache-bundles.js";

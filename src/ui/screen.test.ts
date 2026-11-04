@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HandClock, startFixtureHost } from "../__fixtures__/running-host.js";
 import type { FixtureHost } from "../__fixtures__/running-host.js";
-import { navigationOf, renderScreen } from "./screen.js";
+import { MOST_PLAN_ROUNDS, navigationOf, renderScreen } from "./screen.js";
 import type { HeadlessNode, HeadlessScreen } from "./screen.js";
 
 let fixture: FixtureHost | undefined;
@@ -140,5 +140,17 @@ describe("renderScreen item presentation", () => {
   it.each(["asList", "asTable", "asTree"])("gives a plugin's own detected row the unavailable treatment in %s", async (nodeId) => {
     const screen = await render("families");
     expect(node(screen, nodeId).data).toEqual({ items: [{ id: "x", state: "detected", unavailable: true, install: true }] });
+  });
+});
+
+describe("renderScreen rounds", () => {
+  it("refuses a screen whose plan still names calls after the most rounds it allows", async () => {
+    fixture = await startFixtureHost(["viewer"]);
+    const running = fixture.running;
+    const call = { plugin: "viewer", binding: { service: "viewer:status", method: "greeting" }, arguments: {}, checks: [] };
+    const plan = vi.fn(() => ({ calls: [call] }));
+    const endless = { ...running, runtime: { ...running.runtime, ui: { ...running.runtime.ui, plan } } };
+    await expect(renderScreen(endless, { plugin: "viewer", kind: "view", id: "overview" })).rejects.toThrow(/rounds/);
+    expect(plan).toHaveBeenCalledTimes(MOST_PLAN_ROUNDS);
   });
 });
