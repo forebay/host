@@ -76,6 +76,13 @@ describe("findOnPath", () => {
       expect(findOnPath("claude", { PATH: windowsPath(), PATHEXT: ".EXE;.CMD" }, "win32")).toBeUndefined();
     });
 
+    it("prefers a PATHEXT match over the bare name in the same directory, in PATHEXT order", () => {
+      touch(first, "claude", 0o644);
+      touch(first, "claude.exe", 0o644);
+      const binary = touch(first, "claude.cmd", 0o644);
+      expect(findOnPath("claude", { PATH: windowsPath(), PATHEXT: ".CMD;.EXE" }, "win32")).toBe(binary);
+    });
+
     it("takes the bare name too", () => {
       const binary = touch(first, "claude", 0o644);
       expect(findOnPath("claude", { PATH: windowsPath() }, "win32")).toBe(binary);
