@@ -58,6 +58,30 @@ describe("resolveApplicationHome", () => {
     }
   });
 
+  describe("under XDG_CONFIG_HOME", () => {
+    const xdgStandard = { envOverride: "HUB_OPENCODE_DIR", nativeEnv: "OPENCODE_CONFIG_DIR", xdgSubdir: "opencode", candidates: ["~/.config/opencode", "~/.opencode"] };
+
+    it("takes the subdirectory of an absolute XDG_CONFIG_HOME after the native variable and before the candidates", () => {
+      const xdg = join(base, "xdg");
+      mkdirSync(join(userHome, ".opencode"), { recursive: true });
+      expect(resolveApplicationHome(xdgStandard, { ...environment, XDG_CONFIG_HOME: xdg })).toEqual({ home: join(xdg, "opencode"), source: "xdg" });
+    });
+
+    it("lets the native variable win over XDG_CONFIG_HOME", () => {
+      const native = join(base, "native");
+      expect(resolveApplicationHome(xdgStandard, { ...environment, XDG_CONFIG_HOME: join(base, "xdg"), OPENCODE_CONFIG_DIR: native })).toEqual({ home: native, source: "native" });
+    });
+
+    it("ignores a relative or empty XDG_CONFIG_HOME, as the XDG specification does", () => {
+      expect(resolveApplicationHome(xdgStandard, { ...environment, XDG_CONFIG_HOME: "relative" })).toEqual({ home: join(userHome, ".config", "opencode"), source: "default" });
+      expect(resolveApplicationHome(xdgStandard, { ...environment, XDG_CONFIG_HOME: "" })).toEqual({ home: join(userHome, ".config", "opencode"), source: "default" });
+    });
+
+    it("ignores XDG_CONFIG_HOME for a home with no xdgSubdir", () => {
+      expect(resolveApplicationHome(standard, { ...environment, XDG_CONFIG_HOME: join(base, "xdg") })).toEqual({ home: join(userHome, ".claude"), source: "default" });
+    });
+  });
+
   it("refuses a relative native variable", () => {
     expect(() => resolveApplicationHome(standard, { ...environment, CLAUDE_CONFIG_DIR: "x" })).toThrow(HomeRefusal);
   });

@@ -4,7 +4,7 @@ import { userHomeOf } from "../user-home.js";
 import { HomeRefusal } from "./home-refusal.js";
 import type { LoaderApplication } from "./standard.js";
 
-export type ApplicationHome = { home: string; source: "override" | "native" | "candidate" | "default" };
+export type ApplicationHome = { home: string; source: "override" | "native" | "xdg" | "candidate" | "default" };
 
 const HOME_PREFIX = "~/";
 
@@ -17,6 +17,12 @@ function variableValue(environment: Record<string, string>, name: string | undef
 function absoluteVariable(name: string, value: string): string {
   if (isAbsolute(value)) return value;
   throw new HomeRefusal(`${name} is "${value}", which is a relative path`, `set ${name} to an absolute path, or unset it`);
+}
+
+function xdgHome(xdgSubdir: string | undefined, environment: Record<string, string>): string | undefined {
+  const configHome = environment.XDG_CONFIG_HOME;
+  if (xdgSubdir === undefined || configHome === undefined || !isAbsolute(configHome)) return undefined;
+  return join(configHome, xdgSubdir);
 }
 
 function expandCandidate(candidate: string, environment: Record<string, string>): string {
@@ -34,13 +40,16 @@ function isDirectory(path: string): boolean {
 /**
  * @implNote The order mirrors how the application itself finds its home, because a loader records
  * the result and a different answer would point the registration at a directory the application
- * never reads. An empty variable counts as unset, as the applications treat it.
+ * never reads. An empty variable counts as unset, as the applications treat it, and a relative
+ * `XDG_CONFIG_HOME` is ignored rather than refused, as the XDG specification requires.
  */
 export function resolveApplicationHome(standard: LoaderApplication["home"], environment: Record<string, string>): ApplicationHome {
   for (const [source, name] of [["override", standard.envOverride], ["native", standard.nativeEnv]] as const) {
     const value = variableValue(environment, name);
     if (name !== undefined && value !== undefined) return { home: absoluteVariable(name, value), source };
   }
+  const xdg = xdgHome(standard.xdgSubdir, environment);
+  if (xdg !== undefined) return { home: xdg, source: "xdg" };
   const candidates = standard.candidates.map((candidate) => expandCandidate(candidate, environment));
   const existing = candidates.find(isDirectory);
   return existing === undefined ? { home: candidates[0], source: "default" } : { home: existing, source: "candidate" };
