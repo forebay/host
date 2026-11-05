@@ -19,6 +19,8 @@ export const PROVIDERS = ["provider-a", "provider-b"];
 
 const START_TIMEOUT_MILLISECONDS = 60000;
 const FIXTURE_VERSION = "1.0.0";
+/** Longer than any test that holds a live run, so its record never goes stale under it. */
+const LIVE_RUN_MILLISECONDS = 600000;
 
 /** A temp machine with the foundation, a fixture front door and two fixture providers installed from a local catalog. */
 export interface ProxyWorld {
@@ -87,6 +89,22 @@ export function setHostSetting(world: ProxyWorld, key: string, value: unknown, l
   } finally {
     runtime.close();
   }
+}
+
+/**
+ * Records a run of the session host from this live process, as a session running beside the test
+ * would, answering what removes it again.
+ */
+export function holdLiveRun(world: ProxyWorld): () => void {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  const { record } = runtime.processes.recordRun({ state: world.state, hostId: SESSION_HOST, run: { [SESSION_HOST]: FIXTURE_VERSION }, checkMilliseconds: LIVE_RUN_MILLISECONDS });
+  return () => {
+    try {
+      runtime.processes.removeRuns({ state: world.state, hostId: SESSION_HOST, record });
+    } finally {
+      runtime.close();
+    }
+  };
 }
 
 /** Builds the catalog, installs every fixture plugin and points the session host's proxy at a free port. */

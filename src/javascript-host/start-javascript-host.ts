@@ -75,17 +75,22 @@ function runningOf(layer: CachedLayer, identity: HostIdentity, libraryVersion: s
   return { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi, apps: libraryVersion };
 }
 
+function runsLive(runtime: Runtime, places: HostPlaces, identity: HostIdentity): boolean {
+  return runtime.processes.liveRuns({ state: places.state }).runs.some((run) => identity.id in run);
+}
+
 /**
  * What the host's last start recorded running, with a run record of its own, or undefined when no
- * start recorded anything.
+ * start recorded anything or nothing of the host runs now.
  *
  * @implNote `updates.apply` may switch the host and its plugins to a scheduled version and rewrite
- * their references, which a second process beside a running session host must not do; a host no start
- * recorded has no running session to switch under, so it is applied.
+ * their references, which a second process beside a running session host must not do; a host with no
+ * live run has no running session to switch under, so it is applied, which is also what starts a
+ * plugin enabled since the last start.
  */
 function recordedPlan(runtime: Runtime, places: HostPlaces, identity: HostIdentity, running: Record<string, string>): StartPlan | undefined {
   const { run } = runtime.updates.recorded({ places: { state: places.state, cache: places.cache }, hostId: identity.id });
-  if (Object.keys(run).length === 0) return undefined;
+  if (Object.keys(run).length === 0 || !runsLive(runtime, places, identity)) return undefined;
   const plugins = Object.fromEntries(Object.entries(run).filter(([id]) => !(id in running)));
   const { record } = runtime.processes.recordRun({ state: places.state, hostId: identity.id, run });
   return { plugins, run, runRecord: record, unrecorded: [] };
