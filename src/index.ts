@@ -30,3 +30,4 @@ export { bundleJavascriptHost } from "./build/bundle-javascript-host.js";
 export { bundleKoffiLibrary } from "./build/koffi-library.js";
 export { BuildRefusal } from "./build/build-refusal.js";
 export type { LoaderApplication, LoaderStandard, PackageMapping } from "./loader-standard.js";
+export type * from "./contracts/index.js";
