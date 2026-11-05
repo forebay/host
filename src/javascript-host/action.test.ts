@@ -1,4 +1,5 @@
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runNode } from "../__fixtures__/javascript-host-world.js";
 import { installedProxyWorld, readyRecord, SESSION_HOST } from "../__fixtures__/proxy-world.js";
@@ -26,6 +27,17 @@ describe("the javascript-host's action mode", () => {
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
     expect(JSON.parse(run.stdout)).toEqual({ outcome: "added", accounts: ["someone"] });
+  });
+
+  it("runs what the host's last start recorded, leaving its references as they were", () => {
+    const references = join(world.state, "bundles", `${SESSION_HOST}.json`);
+    const compact = JSON.stringify(JSON.parse(readFileSync(references, "utf8")));
+    writeFileSync(references, compact);
+    const run = action("provider-a", "login", JSON.stringify({ label: "another" }));
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+    expect(JSON.parse(run.stdout)).toEqual({ outcome: "added", accounts: ["someone", "another"] });
+    expect(readFileSync(references, "utf8")).toBe(compact);
   });
 
   it("serves no proxy and publishes no ready record", () => {

@@ -1,12 +1,10 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { startSessionHost } from "../entries/opencode.js";
-import { isPluginError } from "@weivel/typescript/engine";
-import { HostRefusal } from "../host-refusal.js";
 import type { JavascriptHost } from "./start-javascript-host.js";
 import { startJavascriptHost } from "./start-javascript-host.js";
 import { processEnvironment } from "../process-environment.js";
-import { REINSTALL_FIX } from "./cached-layer.js";
+import { startRefusalOf } from "./start-refusal.js";
 import { ACTION_MODE, actionRequestOf, runActionMode } from "./action.js";
 
 const STOP_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
@@ -22,9 +20,8 @@ function writeError(text: string): void {
 
 /** A refusal's detail and fix, from a host refusal and a weivel plugin error alike, as OpenCode's entry reports one. */
 function refusalText(hostId: string, error: unknown): string {
-  const refusal = error instanceof HostRefusal || isPluginError(error) ? error : undefined;
-  const detail = refusal?.detail ?? (error instanceof Error ? error.message : String(error));
-  return `spisor did not start ${hostId}: ${detail}\nfix: ${refusal?.fix ?? REINSTALL_FIX}\n`;
+  const { detail, fix } = startRefusalOf(error);
+  return `spisor did not start ${hostId}: ${detail}\nfix: ${fix}\n`;
 }
 
 function isThisProcessEntry(): boolean {

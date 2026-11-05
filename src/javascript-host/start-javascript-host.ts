@@ -21,6 +21,7 @@ import { userHomeOf } from "../user-home.js";
 import { cachedLayerOf, hintedForebayLibrary, LAYER_ID } from "./cached-layer.js";
 import type { CachedLayer } from "./cached-layer.js";
 import { startProcessTimer } from "./process-timer.js";
+import { startRefusalOf } from "./start-refusal.js";
 import type { ProcessTimer } from "./process-timer.js";
 import { registeredIdentity } from "./registered-identity.js";
 import { checkInWorker } from "./update-check.js";
@@ -28,6 +29,8 @@ import { startUpdateTimer } from "./update-timer.js";
 import type { UpdateTimer } from "./update-timer.js";
 
 type Applied = ReturnType<UpdatesService["apply"]>;
+/** What a start runs: its plugins, the whole run it records, the run record it stamps, and what it could not record. */
+type StartPlan = Pick<Applied, "plugins" | "run" | "runRecord" | "unrecorded">;
 
 export interface JavascriptHostOptions {
   hostId: string;
@@ -63,13 +66,45 @@ interface Started {
   places: HostPlaces;
   identity: HostIdentity;
   settings: Record<string, unknown>;
-  applied: Applied;
+  applied: StartPlan;
   bundles: CacheBundles;
 }
 
-function applied(runtime: Runtime, places: HostPlaces, layer: CachedLayer, identity: HostIdentity, settings: Record<string, unknown>, libraryVersion: string): Applied {
-  const running = { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi, apps: libraryVersion };
-  return runtime.updates.apply({ places: { state: places.state, cache: places.cache }, hostId: identity.id, settings, running });
+/** What this process runs beside the host's plugins: the host, the javascript-host bundle and the libraries it loaded. */
+function runningOf(layer: CachedLayer, identity: HostIdentity, libraryVersion: string): Record<string, string> {
+  return { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi, apps: libraryVersion };
+}
+
+/**
+ * What the host's last start recorded running, with a run record of its own, or undefined when no
+ * start recorded anything.
+ *
+ * @implNote `updates.apply` may switch the host and its plugins to a scheduled version and rewrite
+ * their references, which a second process beside a running session host must not do; a host no start
+ * recorded has no running session to switch under, so it is applied.
+ */
+function recordedPlan(runtime: Runtime, places: HostPlaces, identity: HostIdentity, running: Record<string, string>): StartPlan | undefined {
+  const { run } = runtime.updates.recorded({ places: { state: places.state, cache: places.cache }, hostId: identity.id });
+  if (Object.keys(run).length === 0) return undefined;
+  const plugins = Object.fromEntries(Object.entries(run).filter(([id]) => !(id in running)));
+  const { record } = runtime.processes.recordRun({ state: places.state, hostId: identity.id, run });
+  return { plugins, run, runRecord: record, unrecorded: [] };
+}
+
+function planned(runtime: Runtime, places: HostPlaces, identity: HostIdentity, settings: Record<string, unknown>, running: Record<string, string>, session: boolean): StartPlan {
+  const recorded = session ? undefined : recordedPlan(runtime, places, identity, running);
+  return recorded ?? runtime.updates.apply({ places: { state: places.state, cache: places.cache }, hostId: identity.id, settings, running });
+}
+
+/** @implNote Best effort: the start is refused either way, and a publish that fails must not hide why. */
+function publishRefusal(runtime: Runtime, state: string, options: JavascriptHostOptions, error: unknown): void {
+  if (!options.session) return;
+  const { detail, fix } = startRefusalOf(error);
+  try {
+    readyPublisher(runtime, state, options.hostId).refusal(detail, fix);
+  } catch {
+    return;
+  }
 }
 
 function reportUnrecorded(hostId: string, unrecorded: Applied["unrecorded"], writeError: (text: string) => void): void {
@@ -82,22 +117,31 @@ function openedLibrary(runtime: Runtime, layer: CachedLayer, options: Javascript
   return { version, library: openForebayLibrary(source, () => ({ environment: options.environment, home: userHome, arguments: [] })) };
 }
 
-/** Resolves the registration and what `updates.apply` runs, closing the libraries again when either is refused. */
+/**
+ * Resolves the registration and what this start runs, closing the libraries again when either is
+ * refused, and for a session start publishing the refusal once the places are known.
+ *
+ * @implNote A start that fails before the runtime is open or its places resolve (the bundle outside a
+ * cache, a hint naming no runtime or koffi, a runtime that will not load, an environment with no home)
+ * has nowhere to publish, and reports on stderr only.
+ */
 function prepared(options: JavascriptHostOptions): Started {
   const layer = cachedLayerOf(options.bundleFile);
   const runtime = openRuntime(layer.source);
+  let places: HostPlaces | undefined;
   let library: ForebayLibrary | undefined;
   try {
     const userHome = userHomeOf(options.environment);
+    places = runtime.places.resolve({ home: userHome, environment: options.environment });
     const opened = openedLibrary(runtime, layer, options, userHome);
     library = opened.library;
-    const places = runtime.places.resolve({ home: userHome, environment: options.environment });
     const identity = registeredIdentity(runtime, places, options.hostId);
     const settings = hostSettings(runtime, places, identity.home).all();
-    const answer = applied(runtime, places, layer, identity, settings, opened.version);
-    reportUnrecorded(identity.id, answer.unrecorded, options.writeError);
-    return { layer, runtime, library, userHome, places, identity, settings, applied: answer, bundles: cacheBundles(runtime, places.cache, answer.plugins) };
+    const plan = planned(runtime, places, identity, settings, runningOf(layer, identity, opened.version), options.session);
+    reportUnrecorded(identity.id, plan.unrecorded, options.writeError);
+    return { layer, runtime, library, userHome, places, identity, settings, applied: plan, bundles: cacheBundles(runtime, places.cache, plan.plugins) };
   } catch (error) {
+    if (places !== undefined) publishRefusal(runtime, places.state, options, error);
     library?.close();
     runtime.close();
     throw error;
@@ -212,6 +256,7 @@ export async function startJavascriptHost(options: JavascriptHostOptions): Promi
       services: forebayLibraryServices(started.library),
     });
   } catch (error) {
+    publishRefusal(started.runtime, started.places.state, options, error);
     try {
       await stopTimers(timers);
     } finally {

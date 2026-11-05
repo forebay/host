@@ -7,7 +7,7 @@ const SCHEMA_FILES = ["ir.schema.json", "front-door.schema.json", "provider.sche
 
 /** The definitions a plugin answer is checked against, by the name `forebay/library`'s contracts give them. */
 export type ContractDefinition =
-  | "Profile"
+  | "ProfileAnswer"
   | "DecodeRequestAnswer"
   | "EncodeResponseAnswer"
   | "EncodeEventAnswer"

@@ -1,10 +1,19 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin, PluginContext } from "@weivel/typescript";
-import type { IrRequest, IrStreamEvent, Provider } from "../../../contracts/index.js";
+import type { HandleIrResult, IrRequest, IrStreamEvent, Provider } from "../../../contracts/index.js";
 import type { AccountsService } from "../../../forebay-library/types.js";
 
-const SCENARIOS = ["ok", "429", "first-fails", "third-fails", "stream", "hangs"];
+const SCENARIOS = ["ok", "429", "429-milliseconds", "400", "first-fails", "third-fails", "stream", "hangs", "stalls"];
+const FAILURE_HEADERS = {
+  "content-encoding": "gzip",
+  "content-length": "999",
+  connection: "x-hop",
+  "x-hop": "1",
+  "keep-alive": "timeout=77",
+  "proxy-authenticate": "Basic",
+  "x-kept": "yes",
+};
 
 function record(provider: string, model: string, event: string): void {
   const log = process.env.FIXTURE_PROVIDER_LOG;
@@ -32,6 +41,13 @@ async function* failingAfter(model: string, delivered: number): AsyncGenerator<I
   throw new Error(`upstream of ${model} broke after ${delivered} events`);
 }
 
+async function* stallingAfterTwo(provider: string, model: string, signal: AbortSignal): AsyncGenerator<IrStreamEvent> {
+  const all = events(model, "partial");
+  yield all[0] as IrStreamEvent;
+  yield all[1] as IrStreamEvent;
+  await untilAborted(provider, model, signal);
+}
+
 function untilAborted(provider: string, model: string, signal: AbortSignal): Promise<never> {
   return new Promise((_, reject) => {
     signal.addEventListener("abort", () => {
@@ -44,10 +60,13 @@ function untilAborted(provider: string, model: string, signal: AbortSignal): Pro
 function providerFor(id: string): Provider {
   return {
     models: () => ({ models: SCENARIOS.map((scenario) => ({ id: `${id}-${scenario}`, name: `${id} ${scenario}`, context: 1000, output: 100 })), defaultModelId: `${id}-ok` }),
-    handleIr: (request, signal) => {
+    handleIr: (request, signal): HandleIrResult | Promise<HandleIrResult> => {
       record(id, request.model, "handled");
       const scenario = request.model.slice(id.length + 1);
       if (scenario === "429") return { status: 429, headers: { "retry-after": "30" }, body: "limited" };
+      if (scenario === "429-milliseconds") return { status: 429, headers: {}, body: "limited", retryAfterMilliseconds: 60000 };
+      if (scenario === "400") return { status: 400, headers: FAILURE_HEADERS, body: "bad request" };
+      if (scenario === "stalls") return stallingAfterTwo(id, request.model, signal);
       if (scenario === "first-fails") return failingAfter(request.model, 0);
       if (scenario === "third-fails") return failingAfter(request.model, 2);
       if (scenario === "hangs") return untilAborted(id, request.model, signal);

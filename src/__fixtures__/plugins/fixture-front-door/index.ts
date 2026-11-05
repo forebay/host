@@ -1,12 +1,14 @@
 import type { Plugin } from "@weivel/typescript";
 import type { FrontDoor, IrResponse, WireRequest } from "../../../contracts/index.js";
 
-const TIERS = ["plain", "limited", "exhausted", "firstfail", "thirdfail", "hanging"];
+const TIERS = ["plain", "limited", "exhausted", "waiting", "failing", "firstfail", "thirdfail", "hanging", "stalling"];
+const ROUTED_PATH = "/v1/messages";
 const JSON_HEADERS = { "content-type": "application/json" };
 /** Matches no provider model, so the tiers are the fallback and the stored model map decides every chain. */
 const TIER_PATTERN_MATCHING_NO_MODEL = "^tier-([a-z]+)-\\d";
 
 function decodeRequest(request: WireRequest) {
+  if (request.path !== ROUTED_PATH) return { passThrough: true as const };
   try {
     const wire = JSON.parse(request.body) as { model: string; text: string; stream?: boolean };
     return { model: wire.model, stream: wire.stream === true, messages: [{ role: "user", content: [{ kind: "text" as const, text: wire.text }] }] };
@@ -40,6 +42,7 @@ const frontDoor: FrontDoor = {
 
 const plugin: Plugin = {
   activate(context) {
+    if (process.env.FIXTURE_FRONT_DOOR_FAILS === "1") throw new Error("the fixture front door was told to fail");
     context.provide(context.capability<FrontDoor>("front-door"), frontDoor);
   },
   deactivate() {},

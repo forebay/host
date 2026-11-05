@@ -25,6 +25,11 @@ function sessionDriver(): string {
   return driver;
 }
 
+function readyRecordOf(hostId: string): Record<string, unknown> | undefined {
+  const file = join(world.state, "processes", `${hostId}.ready.json`);
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>) : undefined;
+}
+
 function runRecords(): string[] {
   const directory = join(world.state, "bundles", "runs", SESSION_HOST);
   return existsSync(directory) ? readdirSync(directory) : [];
@@ -76,10 +81,32 @@ describe("the javascript-host bundle", () => {
     expect(runRecords()).toEqual([]);
   });
 
-  it("refuses an unregistered host with the fix and a failing exit code", () => {
+  it("refuses an unregistered host with the fix and a failing exit code, publishing the refusal as its ready record", () => {
     const run = runNode(world, [world.hostEntry, "nobody"]);
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("nobody");
     expect(run.stderr).toContain("fix: ");
+    const record = readyRecordOf("nobody");
+    expect(String(record?.refused)).toContain("nobody");
+    expect(record?.fix).toBe("run forebay-host install again");
+  });
+
+  it("publishes the refusal of a start whose boot hint names no apps library", () => {
+    const hint = join(world.cache, "hosts", "javascript-host.json");
+    const original = readFileSync(hint, "utf8");
+    const { apps, ...rest } = (JSON.parse(original) as { libraries: Record<string, string> }).libraries;
+    expect(apps).toBeDefined();
+    writeFileSync(hint, JSON.stringify({ ...JSON.parse(original), libraries: rest }));
+    try {
+      const run = runNode(world, [world.hostEntry, SESSION_HOST]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain("no apps library is hinted");
+      const record = readyRecordOf(SESSION_HOST);
+      expect(String(record?.refused)).toContain("no apps library is hinted");
+      expect(record?.fix).toBe("run forebay-host install again");
+      expect(record?.environment).toBeUndefined();
+    } finally {
+      writeFileSync(hint, original);
+    }
   });
 });

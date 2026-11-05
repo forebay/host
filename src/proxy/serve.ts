@@ -68,7 +68,19 @@ function proxyPort(session: ProxySession): number {
   throw new ProxyRefusal(`proxy.port is ${JSON.stringify(port)}, which is no port`, `set proxy.port in the settings of ${session.hostId} to a port from 1 to 65535`);
 }
 
+/** @implNote Only a plugin whose manifest validated can be seen declaring the capability; one whose manifest did not is refused at start like any other. */
+function refusalOfStoppedFrontDoor(session: ProxySession): ProxyRefusal | undefined {
+  const declared = session.loaded.deployed.find(({ manifest }) => manifest.capabilities?.includes(FRONT_DOOR_CAPABILITY) === true && !session.loaded.started.includes(manifest.id));
+  if (declared === undefined) return undefined;
+  const id = declared.manifest.id;
+  const cause = session.loaded.quarantined.find((error) => error.pluginId === id);
+  const detail = cause === undefined ? "it is not running" : cause.detail;
+  return new ProxyRefusal(`the front door ${id} is enabled but did not start: ${detail}`, cause === undefined ? `fix or disable ${id}` : `${cause.fix} (plugin ${id})`);
+}
+
 function onlyFrontDoor(session: ProxySession): { pluginId: string; implementation: FrontDoor } | undefined {
+  const stopped = refusalOfStoppedFrontDoor(session);
+  if (stopped !== undefined) throw stopped;
   const records = session.loaded.host.capability(FRONT_DOOR_CAPABILITY);
   if (records.length > 1) {
     const ids = records.map((record) => record.pluginId).join(", ");
@@ -143,6 +155,7 @@ async function served(session: ProxySession, front: { pluginId: string; implemen
   const profile = await profileOf(frontDoor);
   const holder = { snapshot: await snapshotOf(session, profile, providers) };
   const state: ProxyState = {
+    port,
     frontDoor,
     providers,
     routing: session.library.routing,
