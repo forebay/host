@@ -18,6 +18,7 @@ const MODEL_MAP = {
   thirdfail: [{ provider: "provider-a", model: "provider-a-third-fails" }, { provider: "provider-b", model: "provider-b-stream" }],
   hanging: [{ provider: "provider-a", model: "provider-a-hangs" }, { provider: "provider-b", model: "provider-b-ok" }],
   stalling: [{ provider: "provider-a", model: "provider-a-stalls" }, { provider: "provider-b", model: "provider-b-ok" }],
+  fallbackfails: [{ provider: "provider-a", model: "provider-a-429" }, { provider: "provider-b", model: "provider-b-400" }],
   default: [{ provider: "provider-a", model: "provider-a-ok" }],
 };
 const RETRY_AFTER_MILLISECONDS = 60000;
@@ -78,7 +79,7 @@ function logFilesUnder(directory: string): string[] {
 }
 
 function hostLog(): string {
-  return logFilesUnder(world.base).map((file) => readFileSync(file, "utf8")).join("\n");
+  return logFilesUnder(world.base).filter((file) => file !== world.providerLog).map((file) => readFileSync(file, "utf8")).join("\n");
 }
 
 function answerUpstream(state: Upstream, request: IncomingMessage, response: ServerResponse, body: Buffer): void {
@@ -185,10 +186,20 @@ describe("the session host serving an enabled front door", () => {
     expect(hostLog()).toContain("provider-a-429 is rate limited, so the next chain entry serves limited");
   });
 
-  it("answers the front door's rate-limit reply when every entry is rate limited", async () => {
+  it("answers the front door's rate-limit reply when every entry is rate limited, logging that none is left", async () => {
     const response = await post("exhausted");
     expect(response.status).toBe(429);
     expect(await response.json()).toMatchObject({ limited: true, retryAfter: "30" });
+    await until(() => hostLog().includes("provider-b-429 is rate limited, and no chain entry is left to serve exhausted"), "the exhaustion to be logged");
+    expect(hostLog()).not.toContain("provider-b-429 is rate limited, so the next chain entry serves exhausted");
+  });
+
+  it("logs no fallback serving when the fallback entry answers a failure", async () => {
+    const response = await post("fallbackfails");
+    expect(response.status).toBe(400);
+    await response.text();
+    await until(() => hostLog().includes("provider-a-429 is rate limited, so the next chain entry serves fallbackfails"), "the fall-over to be logged");
+    expect(hostLog()).not.toContain("provider-b-400 served fallbackfails");
   });
 
   it("hands the rate-limit reply the latest reset of every entry, reading retryAfterMilliseconds as a reset", async () => {
