@@ -75,6 +75,13 @@ function runningOf(layer: CachedLayer, identity: HostIdentity, libraryVersion: s
   return { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi, apps: libraryVersion };
 }
 
+/**
+ * Whether a live run record, of any process, runs this host.
+ *
+ * @implNote `identity.id in run` relies on `runningOf` putting only the host's own id among hosts in its
+ * run map; the rest are the layer, the libraries and the plugins, and none of those ids can equal a
+ * host's, since hosts and plugins share `<cache>/bundles/<id>`.
+ */
 function runsLive(runtime: Runtime, places: HostPlaces, identity: HostIdentity): boolean {
   return runtime.processes.liveRuns({ state: places.state }).runs.some((run) => identity.id in run);
 }
@@ -86,7 +93,12 @@ function runsLive(runtime: Runtime, places: HostPlaces, identity: HostIdentity):
  * @implNote `updates.apply` may switch the host and its plugins to a scheduled version and rewrite
  * their references, which a second process beside a running session host must not do; a host with no
  * live run has no running session to switch under, so it is applied, which is also what starts a
- * plugin enabled since the last start.
+ * plugin enabled since the last start. The check and the apply are not one step, and need not be: a
+ * session starting in between applies too, and `updates.apply` holds the host's lock from reading its
+ * references to writing them and its run record, so the second apply reads the first one's switch,
+ * finds the scheduled version consumed and switches nothing. Both then run the same versions, each
+ * named by a live run record, which a sweep keeps (spisor/library `updates_test`,
+ * `it_converges_two_starts_of_one_host_that_race_on_its_scheduled_version`).
  */
 function recordedPlan(runtime: Runtime, places: HostPlaces, identity: HostIdentity, running: Record<string, string>): StartPlan | undefined {
   const { run } = runtime.updates.recorded({ places: { state: places.state, cache: places.cache }, hostId: identity.id });
