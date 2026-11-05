@@ -103,6 +103,7 @@ export interface CacheService {
   install(argument: { cache: string; id: string; item: { [key: string]: unknown }; version: string; platform?: string; [key: string]: unknown }): { id: string; version: string; directory: string; fetched: string[]; cached: string[] };
   installed(argument: { cache: string; platform?: string; [key: string]: unknown }): { bundles: { [key: string]: string[] }; libraries: { [key: string]: string[] } };
   check(argument: { directory: string; [key: string]: unknown }): { kind: "absent" | "intact" | "damaged"; detail?: string; fix?: string; file?: string };
+  damaged(argument: { cache: string; platform?: string; [key: string]: unknown }): { damaged: { id: string; version: string; detail: string; fix: string; file?: string }[] };
   platform(argument: { [key: string]: unknown }): { platform: string };
   sweep(argument: { cache: string; state: string; [key: string]: unknown }): { removed: string[] };
 }
@@ -113,6 +114,7 @@ export interface UpdatesService {
   apply(argument: { places: { state: string; cache: string; [key: string]: unknown }; hostId: string; settings?: { [key: string]: unknown }; defaults?: { [key: string]: string }; running?: { [key: string]: string }; libraries?: string[]; platform?: string; [key: string]: unknown }): { plugins: { [key: string]: string }; run: { [key: string]: string }; next: { [key: string]: string }; rollback: { [key: string]: string }; unrecorded: { message: string; fix: string }[]; runRecord: string };
   check(argument: { places: { state: string; cache: string; [key: string]: unknown }; hostId: string; now: string; settings?: { [key: string]: unknown }; defaults?: { [key: string]: string }; problems?: { id: string; version: string; [key: string]: unknown }[]; platform?: string; [key: string]: unknown }): { checked: ({ kind: "skipped" | "unchanged" | "changed" | "failed"; detail?: string })[]; fetched: string[]; refused: { id: string; message: string; fix: string }[]; removed: string[] };
   rollback(argument: { places: { state: string; cache: string; [key: string]: unknown }; hostId: string; item: string; [key: string]: unknown }): { run: { [key: string]: string }; next: { [key: string]: string }; rollback: { [key: string]: string } };
+  run(argument: { places: { portable: string; state: string; cache: string; [key: string]: unknown }; now: string; [key: string]: unknown }): { checks: { [key: string]: unknown }; applications: { [key: string]: unknown }; refused: { message: string; fix: string; id: string; [key: string]: unknown }[] };
 }
 
 export const Updates: ServiceType<UpdatesService> = { id: "updates" };
@@ -121,6 +123,7 @@ export interface BootService {
   read(argument: { cache: string; hostId: string; [key: string]: unknown }): { hint?: { libraries: { [key: string]: string }; host?: string } };
   write(argument: { cache: string; hostId: string; libraries: { [key: string]: string }; host?: string; state?: string; [key: string]: unknown }): { hint: { libraries: { [key: string]: string }; host?: string } };
   resolve(argument: { cache: string; hostId?: string; arguments?: string[]; platform?: string; [key: string]: unknown }): { executable: string; arguments: string[]; version: string; directory: string };
+  place(argument: { cache: string; [key: string]: unknown }): { placed: boolean; path: string };
 }
 
 export const Boot: ServiceType<BootService> = { id: "boot" };
