@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runNode } from "../__fixtures__/javascript-host-world.js";
-import { installedProxyWorld, publishProviderA, readyRecord, SESSION_HOST, setHostSetting } from "../__fixtures__/proxy-world.js";
+import { holdLiveRun, installedProxyWorld, publishProviderA, readyRecord, SESSION_HOST, setHostSetting } from "../__fixtures__/proxy-world.js";
 import type { ProxyWorld } from "../__fixtures__/proxy-world.js";
 import { userPathEntriesUnder } from "../__fixtures__/user-path.js";
 
@@ -45,15 +45,20 @@ describe("the javascript-host's action mode", () => {
     expect(JSON.parse(run.stdout)).toEqual({ outcome: "added", accounts: ["someone"] });
   });
 
-  it("runs what the host's last start recorded, leaving its references as they were", () => {
+  it("runs what the host's last start recorded while a session runs, leaving its references as they were", () => {
     const references = join(world.state, "bundles", `${SESSION_HOST}.json`);
     const compact = JSON.stringify(JSON.parse(readFileSync(references, "utf8")));
     writeFileSync(references, compact);
-    const run = action("provider-a", "login", JSON.stringify({ label: "another" }));
-    expect(run.stderr).toBe("");
-    expect(run.status).toBe(0);
-    expect(JSON.parse(run.stdout)).toEqual({ outcome: "added", accounts: ["someone", "another"] });
-    expect(readFileSync(references, "utf8")).toBe(compact);
+    const release = holdLiveRun(world);
+    try {
+      const run = action("provider-a", "login", JSON.stringify({ label: "another" }));
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+      expect(JSON.parse(run.stdout)).toEqual({ outcome: "added", accounts: ["someone", "another"] });
+      expect(readFileSync(references, "utf8")).toBe(compact);
+    } finally {
+      release();
+    }
   });
 
   it("starts no update check, leaving the cache and the boot hint as they were though a newer version is listed", async () => {
@@ -62,11 +67,16 @@ describe("the javascript-host's action mode", () => {
     const cache = world.environment.SPISOR_CACHE as string;
     const hint = join(cache, "hosts", "javascript-host.json");
     const references = join(world.state, "bundles", `${SESSION_HOST}.json`);
-    const before = { tree: treeOf(cache), hint: readFileSync(hint, "utf8"), references: readFileSync(references, "utf8") };
-    const run = action("provider-a", "wait", JSON.stringify({ milliseconds: LONG_ACTION_MILLISECONDS }));
-    expect(run.stderr).toBe("");
-    expect(run.status).toBe(0);
-    expect({ tree: treeOf(cache), hint: readFileSync(hint, "utf8"), references: readFileSync(references, "utf8") }).toEqual(before);
+    const release = holdLiveRun(world);
+    try {
+      const before = { tree: treeOf(cache), hint: readFileSync(hint, "utf8"), references: readFileSync(references, "utf8") };
+      const run = action("provider-a", "wait", JSON.stringify({ milliseconds: LONG_ACTION_MILLISECONDS }));
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+      expect({ tree: treeOf(cache), hint: readFileSync(hint, "utf8"), references: readFileSync(references, "utf8") }).toEqual(before);
+    } finally {
+      release();
+    }
   }, 120000);
 
   it("serves no proxy and publishes no ready record", () => {
@@ -92,6 +102,18 @@ describe("the javascript-host's action mode", () => {
     } finally {
       writeFileSync(references, original);
     }
+  });
+
+  it("applies the settings while nothing of the host runs, so a plugin enabled since the last start runs its action", () => {
+    setHostSetting(world, "plugins.provider-b.enabled", false);
+    expect(action("provider-a", "wait", JSON.stringify({ milliseconds: 0 })).status).toBe(0);
+    const references = join(world.state, "bundles", `${SESSION_HOST}.json`);
+    expect(readFileSync(references, "utf8")).not.toContain("provider-b");
+    setHostSetting(world, "plugins.provider-b.enabled", true);
+    const run = action("provider-b", "login", JSON.stringify({ label: "enabled-since" }));
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+    expect(JSON.parse(run.stdout)).toMatchObject({ outcome: "added", accounts: expect.arrayContaining(["enabled-since"]) });
   });
 
   it("refuses input that is not a JSON object as misuse", () => {
