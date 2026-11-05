@@ -2,7 +2,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { dirname, join } from "node:path";
 import { BuildRefusal } from "./build-refusal.js";
-import { MODULE_MARKER_CONTENT, moduleMarkerKey } from "./module-marker.js";
 
 /**
  * Gives inlined CommonJS a working `require`, which esbuild's ESM output otherwise replaces with a
@@ -109,17 +108,12 @@ export function writeFile(path: string, text: string): void {
 }
 
 /**
- * Writes one bundled entry at `entry` under `out`, with the `package.json` marking it as ESM beside a `.js` entry.
+ * Writes one bundled entry at `entry` under `out`.
  *
  * @returns the files written, keyed by their relative path with `/` separators.
  */
 export function writeEntry(out: string, entry: string, built: Built): Record<string, string> {
   const files: Record<string, string> = { [entry]: join(out, entry) };
   writeFile(files[entry] as string, needsRequire(built) ? `${REQUIRE_BANNER}${built.text}` : built.text);
-  const markerKey = moduleMarkerKey(entry);
-  if (markerKey !== undefined) {
-    files[markerKey] = join(out, markerKey);
-    writeFile(files[markerKey], MODULE_MARKER_CONTENT);
-  }
   return files;
 }

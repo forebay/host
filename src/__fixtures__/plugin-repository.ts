@@ -37,7 +37,8 @@ export function pluginRepository(root: string, id: string, layout: RepositoryLay
 
 /**
  * What `expression` evaluates to with the module at `entry` imported as `loaded`, in a plain `node`
- * process whose runner script is written into `scratch`.
+ * process whose runner script is written into `scratch`, with the `package.json` marking it as ESM
+ * beside it that the catalog build writes beside a `.js` entry.
  *
  * @implNote Out of process because a vitest worker has a global `require`, which hides a bundle
  * whose inlined CommonJS would fail to load anywhere else; and with syntax detection off, so a
@@ -46,6 +47,7 @@ export function pluginRepository(root: string, id: string, layout: RepositoryLay
 export function evaluatedInNode(entry: string, expression: string, scratch: string): string {
   const runner = join(scratch, "runner.mjs");
   mkdirSync(scratch, { recursive: true });
+  if (entry.endsWith(".js")) writeFileSync(join(dirname(entry), "package.json"), `${JSON.stringify({ type: "module" })}\n`);
   writeFileSync(runner, [`const loaded = await import(${JSON.stringify(pathToFileURL(entry).href)});`, `process.stdout.write(String(${expression}));`].join("\n"));
   return execFileSync(process.execPath, ["--no-experimental-detect-module", runner], { encoding: "utf8" });
 }

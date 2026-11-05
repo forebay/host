@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { isRecord } from "../plugins/is-record.js";
 import { BuildRefusal } from "./build-refusal.js";
-import { isModuleMarkerName } from "./module-marker.js";
 
 const MANIFEST_FILE = "plugin.json";
 const DEFAULT_SOURCE = "src/index.ts";
@@ -43,7 +42,7 @@ export function versionOf(manifest: Record<string, unknown>, path: string): stri
   throw new BuildRefusal(`${path} has no version`, 'add a version to the manifest, for example "version": "1.0.0"');
 }
 
-/** @implNote The catalog build checks the entry's shape; this only keeps the bundle from writing outside its directory. */
+/** @implNote Guards only this build's own write; which entries a catalog accepts is the catalog build's rule. */
 function staysInside(entry: string): boolean {
   const root = resolve("bundle-root");
   const target = relative(root, join(root, entry));
@@ -58,8 +57,7 @@ function entryOf(manifest: Record<string, unknown>, path: string): string {
       'name the entry file in the manifest as a relative path with / separators, for example "entry": "index.js"',
     );
   }
-  if (entry.toLowerCase() !== MANIFEST_FILE && !isModuleMarkerName(entry)) return entry;
-  throw new BuildRefusal(`${path} names the entry ${entry}, which the bundle's own ${MANIFEST_FILE} or package.json would replace`, 'name a script as the entry, for example "entry": "index.js"');
+  return entry;
 }
 
 function sourceOf(manifest: Record<string, unknown>, repositoryRoot: string): string {

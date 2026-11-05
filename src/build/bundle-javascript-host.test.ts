@@ -36,13 +36,11 @@ describe("bundleJavascriptHost", () => {
       files: {
         "host.js": join(out, "host.js"),
         "runtime-worker.js": join(out, "runtime-worker.js"),
-        "package.json": join(out, "package.json"),
         "host.json": join(out, "host.json"),
       },
     });
-    expect(readdirSync(out).sort()).toEqual(["host.js", "host.json", "package.json", "runtime-worker.js"]);
+    expect(readdirSync(out).sort()).toEqual(["host.js", "host.json", "runtime-worker.js"]);
     expect(JSON.parse(readFileSync(join(out, "host.json"), "utf8"))).toEqual({ id: "javascript-host", version: PACKAGE_VERSION, entry: "host.js", runtime: "javascript" });
-    expect(JSON.parse(readFileSync(join(out, "package.json"), "utf8"))).toEqual({ type: "module" });
   });
 
   it("contains no esbuild and nothing under src/build, and imports only node builtins", async () => {

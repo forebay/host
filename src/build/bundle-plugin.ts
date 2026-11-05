@@ -47,8 +47,8 @@ export async function bundlePluginWith(repositoryRoot: string, outDirectory: str
  * Bundles a plugin repository into one ESM file at its manifest's `entry`, beside its `plugin.json`
  * naming the `javascript` runtime, every dependency inlined except `koffi`.
  *
- * @remarks The source is the manifest's `bundle.entry` when it names one, else `src/index.ts`. A
- * `.js` entry gets a `package.json` of `{ "type": "module" }` beside it, listed among the files.
+ * @remarks The source is the manifest's `bundle.entry` when it names one, else `src/index.ts`. The
+ * catalog build writes the `package.json` marking a `.js` entry as ESM, so the bundle carries none.
  * A manifest with no id, version or entry inside the bundle, or a bundle that would import
  * anything but `koffi` and Node's builtins at run time, is refused before anything is written.
  */
