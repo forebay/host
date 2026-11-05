@@ -12,6 +12,7 @@ const STANDARD = {
   application: { id: "claude-code", label: "Claude Code", binary: "claude", home: { candidates: ["~/.claude"] }, packages: { npm: "@anthropic-ai/claude-code" } },
   pathCommands: { requested: ["claude"], minimum: 0 },
   background: ["forebay-host"],
+  plugins: [],
 };
 
 let base: string;
