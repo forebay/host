@@ -5,7 +5,8 @@ import { createServer as createSocketServer } from "node:net";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { userPathEntriesUnder } from "../__fixtures__/user-path.js";
-import { FRONT_DOOR, installedProxyWorld, providerEvents, PROVIDERS, readyRecord, setHostSetting, startSession } from "../__fixtures__/proxy-world.js";
+import { runNode } from "../__fixtures__/javascript-host-world.js";
+import { FRONT_DOOR, hostSettingsFile, installedProxyWorld, providerEvents, PROVIDERS, readyRecord, SESSION_HOST, setHostSetting, startSession } from "../__fixtures__/proxy-world.js";
 import type { ProxyWorld, RunningSession } from "../__fixtures__/proxy-world.js";
 
 const MODEL_MAP = {
@@ -23,6 +24,8 @@ const MODEL_MAP = {
 };
 const RETRY_AFTER_MILLISECONDS = 60000;
 const RETRY_AFTER_SECONDS_MILLISECONDS = 30000;
+/** Well under the 10 seconds `launch` waits for a ready record, and under the 8 seconds the slow fixture provider takes. */
+const SLOW_START_LIMIT_MILLISECONDS = 6000;
 /** The session host reads its own clock, a process apart from the test's, so a reset is compared within a second. */
 const CLOCK_TOLERANCE_MILLISECONDS = 1000;
 
@@ -64,6 +67,21 @@ async function until(condition: () => boolean, what: string): Promise<void> {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+}
+
+async function untilAnswered<T>(attempt: () => Promise<T | undefined>, what: string, timeoutMilliseconds = 20000): Promise<T> {
+  const deadline = Date.now() + timeoutMilliseconds;
+  for (;;) {
+    const answer = await attempt();
+    if (answer !== undefined) return answer;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+async function listedModelIds(): Promise<string[]> {
+  const listed = (await (await fetch(url("/v1/models"))).json()) as { data: Array<{ id: string }> };
+  return listed.data.map((model) => model.id);
 }
 
 function eventsIn(body: string): string[] {
@@ -283,6 +301,16 @@ describe("the session host serving an enabled front door", () => {
     expect(received[0]?.headers.authorization).toBe("Bearer own");
   });
 
+  it("drops the placeholder authorization from what it forwards, so the placeholder never reaches an upstream", async () => {
+    const before = upstream.received.length;
+    const response = await fetch(url("/v1/messages/count_tokens"), { method: "POST", headers: { authorization: "Bearer sk-ant-loader-proxy", "content-type": "application/json" }, body: "{}" });
+    expect(response.status).toBe(201);
+    await response.text();
+    const received = upstream.received.slice(before);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.headers.authorization).toBeUndefined();
+  });
+
   it("relays a streaming upstream answer as it arrives, never buffering it", async () => {
     const response = await fetch(url("/stream"));
     const reader = (response.body as ReadableStream<Uint8Array>).getReader();
@@ -302,6 +330,50 @@ describe("the session host serving an enabled front door", () => {
     await answered;
     await until(() => upstream.hangClosed, "the upstream call to close");
   });
+});
+
+describe("the session host whose running providers offer no model for a request", () => {
+  it("answers 503 naming each provider's login and the model map, sending nothing upstream, and serves once a login lands", async () => {
+    await session.stop();
+    setHostSetting(world, "routing", {});
+    session = await startServing({ FIXTURE_MODELS_AFTER_LOGIN: "1" });
+    const before = upstream.received.length;
+    const response = await post("provider-a-ok");
+    expect(response.status).toBe(503);
+    const answer = (await response.json()) as { type: string; error: { type: string; message: string } };
+    expect(answer).toMatchObject({ type: "error", error: { type: "api_error" } });
+    for (const id of PROVIDERS) expect(answer.error.message).toContain(`forebay-host action ${SESSION_HOST} ${id} login`);
+    expect(answer.error.message).toContain(`set routing.modelMap in ${hostSettingsFile(world)}`);
+    expect(upstream.received.slice(before)).toEqual([]);
+    const login = runNode(world, [world.hostEntry, SESSION_HOST, "action", "provider-a", "login", JSON.stringify({ label: "someone" })]);
+    expect(login.status, login.stderr).toBe(0);
+    const served = await untilAnswered(async () => {
+      const attempt = await post("provider-a-ok");
+      if (attempt.status !== 200) {
+        await attempt.text();
+        return undefined;
+      }
+      return (await attempt.json()) as { text: string };
+    }, "the login to take effect");
+    expect(served.text).toBe("served provider-a-ok: hi");
+    expect(upstream.received.slice(before)).toEqual([]);
+  }, 60000);
+});
+
+describe("the session host whose provider answers its models slowly", () => {
+  it("publishes its ready record within its start budget and routes to the slow provider once its models arrive", async () => {
+    await session.stop();
+    setHostSetting(world, "routing.modelMap", MODEL_MAP);
+    const started = Date.now();
+    session = await startServing({ FIXTURE_SLOW_MODELS: "provider-b" });
+    expect(Date.now() - started).toBeLessThan(SLOW_START_LIMIT_MILLISECONDS);
+    expect(readyRecord(world)).toMatchObject({ pid: session.process.pid });
+    expect(await listedModelIds()).not.toContain("provider-b-ok");
+    await untilAnswered(async () => ((await listedModelIds()).includes("provider-b-ok") ? true : undefined), "the slow models to arrive");
+    const response = await post("limited");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ text: "served provider-b-ok: hi" });
+  }, 60000);
 });
 
 describe("the session host with no provider enabled", () => {
@@ -334,7 +406,7 @@ describe("the session host with no provider enabled", () => {
       expect(record).toMatchObject({ pid: session.process.pid });
       expect(record?.environment).toBeUndefined();
       expect(String(record?.refused)).toContain(String(world.port));
-      expect(String(record?.fix)).toContain("proxy.port");
+      expect(record?.fix).toBe(`stop what listens on port ${world.port}, or set proxy.port in ${hostSettingsFile(world)} to a free port`);
     } finally {
       await closed(squatter);
     }
@@ -349,5 +421,18 @@ describe("the session host with no provider enabled", () => {
     expect(String(record?.refused)).toContain(FRONT_DOOR);
     expect(String(record?.refused)).toContain("the fixture front door was told to fail");
     expect(String(record?.fix)).toContain(FRONT_DOOR);
+  });
+
+  it("publishes a refusal naming the settings file to correct when proxy.port is no port", async () => {
+    await session.stop();
+    setHostSetting(world, "proxy.port", "nope");
+    try {
+      session = await startServing();
+      const record = readyRecord(world);
+      expect(record?.refused).toBe('proxy.port is "nope", which is no port');
+      expect(record?.fix).toBe(`set proxy.port in ${hostSettingsFile(world)} to a port from 1 to 65535`);
+    } finally {
+      setHostSetting(world, "proxy.port", world.port);
+    }
   });
 });

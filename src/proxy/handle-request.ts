@@ -8,13 +8,14 @@ import type { FrontDoorCalls } from "./front-door.js";
 import { isModelsPath, writeModels } from "./model-listing.js";
 import { passThrough } from "./pass-through.js";
 import type { ProviderAnswer, ProviderCalls } from "./providers.js";
-import { writeProviderFailure, writeProxyError, writeReply } from "./replies.js";
+import { writeApiError, writeProviderFailure, writeProxyError, writeReply } from "./replies.js";
 import { relayStream } from "./stream.js";
 
 const HEALTH_PATH = "/health";
 const FORBIDDEN = 403;
 const BAD_GATEWAY = 502;
 const INTERNAL_ERROR = 500;
+const SERVICE_UNAVAILABLE = 503;
 const RETRY_AFTER_MILLISECONDS_HEADER = "x-hub-retry-after-ms";
 const LOOPBACK_NAMES = ["127.0.0.1", "localhost"];
 
@@ -34,12 +35,17 @@ export interface RoutingSnapshot {
 export interface ProxyState {
   /** The port the proxy listens on, the only one a request may name in its `Host`. */
   port: number;
+  /** The session host's id and the file of its settings, which the answer to a request no model serves names. */
+  hostId: string;
+  settingsFile: string;
   frontDoor: FrontDoorCalls;
   providers: Map<string, ProviderCalls>;
   routing: Pick<RoutingService, "resolve" | "outcome">;
   profile: Profile;
   checks: ContractChecks;
   snapshot(): RoutingSnapshot;
+  /** Asks the providers for their models again, as a request finding no model does before it is refused. */
+  rederive(): Promise<void>;
   log: ProxyLog;
   now(): number;
   timeZone: string;
@@ -196,7 +202,29 @@ function chainFor(state: ProxyState, request: IrRequest, snapshot: RoutingSnapsh
   return resolved.chain ?? [];
 }
 
-/** @implNote With no provider running every chain is empty, so the request goes upstream undecoded, whatever its path. */
+/** What a user does when no running provider offers a model: log one in, or name the models in the model map. */
+function noModelMessage(state: ProxyState, requested: string): string {
+  const logins = [...state.providers.keys()].map((id) => `forebay-host action ${state.hostId} ${id} login`).join(" or ");
+  return `no running provider offers a model for ${requested}; log a provider in with ${logins}, or set routing.modelMap in ${state.settingsFile}`;
+}
+
+/**
+ * The chain for the request, asking the providers for their models once more when it is empty, as a
+ * login since the last ask would offer new ones.
+ */
+async function chainAfterRederive(state: ProxyState, request: IrRequest): Promise<Assignment[]> {
+  const chain = chainFor(state, request, state.snapshot());
+  if (chain.length > 0) return chain;
+  await state.rederive();
+  return chainFor(state, request, state.snapshot());
+}
+
+/**
+ * @implNote With no provider running every request goes upstream undecoded, whatever its path. With
+ * providers running, a request no chain serves is refused rather than passed on: upstream it would
+ * either fail on the placeholder token or be served on the user's own login, the bypass of the
+ * configured providers a user must never get silently.
+ */
 async function routed(state: ProxyState, request: BufferedRequest, response: ServerResponse, signal: AbortSignal): Promise<void> {
   if (state.providers.size === 0) return passThrough(request, state.profile.upstream, response, signal);
   const decoded = await state.frontDoor.decodeRequest({ method: request.method, path: request.url, headers: flatHeaders(request.headers), body: request.body.toString("utf8") });
@@ -205,8 +233,11 @@ async function routed(state: ProxyState, request: BufferedRequest, response: Ser
     writeReply(response, decoded);
     return;
   }
-  const chain = chainFor(state, decoded, state.snapshot());
-  if (chain.length === 0) return passThrough(request, state.profile.upstream, response, signal);
+  const chain = await chainAfterRederive(state, decoded);
+  if (chain.length === 0) {
+    writeApiError(response, SERVICE_UNAVAILABLE, noModelMessage(state, decoded.model));
+    return;
+  }
   return servedByChain(state, decoded, chain, response, signal);
 }
 

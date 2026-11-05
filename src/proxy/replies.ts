@@ -46,3 +46,8 @@ export function writeProxyError(response: ServerResponse, status: number, messag
   }
   writeJson(response, status, { type: "error", error: { type: "loader_proxy_error", message } });
 }
+
+/** An answer in the Anthropic API's own error envelope, which the application reads as it reads an upstream error. */
+export function writeApiError(response: ServerResponse, status: number, message: string): void {
+  writeJson(response, status, { type: "error", error: { type: "api_error", message } });
+}

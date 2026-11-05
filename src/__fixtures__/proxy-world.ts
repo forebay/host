@@ -91,6 +91,19 @@ export function setHostSetting(world: ProxyWorld, key: string, value: unknown, l
   }
 }
 
+/** The file the application layer of the session host's settings lives in, which a fix tells the user to edit. */
+export function hostSettingsFile(world: ProxyWorld): string {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    const places = runtime.places.resolve({ home: userHomeOf(world.environment), environment: world.environment });
+    const home = runtime.registry.get({ places, id: SESSION_HOST }).registration?.home;
+    if (typeof home !== "string") throw new Error(`${SESSION_HOST} is not registered`);
+    return join(runtime.paths.resolve({ home }).config, "settings.json");
+  } finally {
+    runtime.close();
+  }
+}
+
 /**
  * Records a run of the session host from this live process, as a session running beside the test
  * would, answering what removes it again.

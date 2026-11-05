@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { HostRefusal } from "../host-refusal.js";
+import { HostRefusal, REINSTALL_FIX } from "../host-refusal.js";
 import { isRecord } from "../plugins/is-record.js";
 import { cachedForebayLibrary, FOREBAY_LIBRARY_ID } from "../forebay-library/open.js";
 import type { ForebayLibrarySource } from "../forebay-library/open.js";
@@ -9,7 +9,6 @@ import type { HostLibraries } from "../runtime/cached-runtime.js";
 import type { Runtime, RuntimeSource } from "../runtime/open.js";
 
 export const LAYER_ID = "javascript-host";
-export const REINSTALL_FIX = "run forebay-host install again";
 
 /** The installed javascript-host bundle a process runs from: its cache, its version, and the runtime and koffi it loads. */
 export interface CachedLayer {

@@ -1,7 +1,7 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin, PluginContext } from "@weivel/typescript";
-import type { HandleIrResult, IrRequest, IrStreamEvent, Provider } from "../../../contracts/index.js";
+import type { HandleIrResult, IrRequest, IrStreamEvent, ModelsAnswer, Provider } from "../../../contracts/index.js";
 import type { AccountsService } from "../../../forebay-library/types.js";
 
 const SCENARIOS = ["ok", "429", "429-milliseconds", "400", "first-fails", "third-fails", "stream", "hangs", "stalls"];
@@ -57,9 +57,27 @@ function untilAborted(provider: string, model: string, signal: AbortSignal): Pro
   });
 }
 
-function providerFor(id: string): Provider {
+const SLOW_MODELS_MILLISECONDS = 8000;
+
+function accountStore(context: PluginContext): string {
+  return join(context.paths.plugin, "accounts.json");
+}
+
+/** Under `FIXTURE_MODELS_AFTER_LOGIN`, a provider offers no model until its login action has stored an account. */
+function isLoggedOut(context: PluginContext): boolean {
+  return process.env.FIXTURE_MODELS_AFTER_LOGIN === "1" && !existsSync(accountStore(context));
+}
+
+/** Under `FIXTURE_SLOW_MODELS=<id>`, that provider answers its models only after a while. */
+async function modelsOf(id: string, context: PluginContext): Promise<ModelsAnswer> {
+  if (process.env.FIXTURE_SLOW_MODELS === id) await new Promise((resolve) => setTimeout(resolve, SLOW_MODELS_MILLISECONDS));
+  if (isLoggedOut(context)) return { models: [] };
+  return { models: SCENARIOS.map((scenario) => ({ id: `${id}-${scenario}`, name: `${id} ${scenario}`, context: 1000, output: 100 })), defaultModelId: `${id}-ok` };
+}
+
+function providerFor(id: string, context: PluginContext): Provider {
   return {
-    models: () => ({ models: SCENARIOS.map((scenario) => ({ id: `${id}-${scenario}`, name: `${id} ${scenario}`, context: 1000, output: 100 })), defaultModelId: `${id}-ok` }),
+    models: () => modelsOf(id, context),
     handleIr: (request, signal): HandleIrResult | Promise<HandleIrResult> => {
       record(id, request.model, "handled");
       const scenario = request.model.slice(id.length + 1);
@@ -84,7 +102,7 @@ function loginService(context: PluginContext) {
       const accounts = context.services.get(context.service<AccountsService>("accounts"));
       if (accounts === undefined) throw new Error("no accounts service");
       mkdirSync(context.paths.plugin, { recursive: true });
-      const store = join(context.paths.plugin, "accounts.json");
+      const store = accountStore(context);
       const { outcome } = accounts.upsert({ store, account: { id: argument.label, label: argument.label } });
       return { outcome, accounts: (accounts.list({ store }).accounts ?? []).map((account) => account.id) };
     },
@@ -94,7 +112,7 @@ function loginService(context: PluginContext) {
 const plugin: Plugin = {
   activate(context) {
     const id = context.manifest.id;
-    context.provide(context.capability<Provider>("provider"), providerFor(id));
+    context.provide(context.capability<Provider>("provider"), providerFor(id, context));
     context.services.register(context.service(`${id}:accounts`), loginService(context));
   },
   deactivate() {},

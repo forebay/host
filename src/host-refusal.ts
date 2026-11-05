@@ -1,3 +1,6 @@
+/** The fix for anything a fresh install would put back, in the accepted form of the install command. */
+export const REINSTALL_FIX = "run forebay-host install --catalog <path or url> again";
+
 /** Why a host did not start, and what would make it start. */
 export class HostRefusal extends Error {
   readonly detail: string;
