@@ -88,7 +88,7 @@ describe("the javascript-host bundle", () => {
     expect(run.stderr).toContain("fix: ");
     const record = readyRecordOf("nobody");
     expect(String(record?.refused)).toContain("nobody");
-    expect(record?.fix).toBe("run forebay-host install again");
+    expect(record?.fix).toBe("run forebay-host install --catalog <path or url> again");
   });
 
   it("publishes the refusal of a start whose boot hint names no apps library", () => {
@@ -103,7 +103,7 @@ describe("the javascript-host bundle", () => {
       expect(run.stderr).toContain("no apps library is hinted");
       const record = readyRecordOf(SESSION_HOST);
       expect(String(record?.refused)).toContain("no apps library is hinted");
-      expect(record?.fix).toBe("run forebay-host install again");
+      expect(record?.fix).toBe("run forebay-host install --catalog <path or url> again");
       expect(record?.environment).toBeUndefined();
     } finally {
       writeFileSync(hint, original);

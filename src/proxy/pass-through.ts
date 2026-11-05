@@ -10,9 +10,16 @@ function withoutHopByHop(headers: IncomingHttpHeaders, alsoDropped: readonly str
   return Object.fromEntries(Object.entries(headers).filter(([name, value]) => value !== undefined && !HOP_BY_HOP.has(name) && !alsoDropped.includes(name)));
 }
 
+/** The authorization `routing.environment` hands an application served by providers: no credential, so no upstream is ever sent it. */
+const PLACEHOLDER_AUTHORIZATION = "Bearer sk-ant-loader-proxy";
+
+function withoutPlaceholder(headers: OutgoingHttpHeaders): OutgoingHttpHeaders {
+  return headers.authorization === PLACEHOLDER_AUTHORIZATION ? Object.fromEntries(Object.entries(headers).filter(([name]) => name !== "authorization")) : headers;
+}
+
 /** @implNote The body is sent buffered, so its length is known and replaces whatever framing the application used. */
 function forwardedHeaders(request: BufferedRequest, upstream: URL): OutgoingHttpHeaders {
-  return { ...withoutHopByHop(request.headers, ["host", "content-length"]), host: upstream.host, "content-length": String(request.body.length) };
+  return { ...withoutPlaceholder(withoutHopByHop(request.headers, ["host", "content-length"])), host: upstream.host, "content-length": String(request.body.length) };
 }
 
 function targetPath(upstream: URL, url: string): string {

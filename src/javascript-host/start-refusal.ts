@@ -1,6 +1,5 @@
 import { isPluginError } from "@weivel/typescript/engine";
-import { HostRefusal } from "../host-refusal.js";
-import { REINSTALL_FIX } from "./cached-layer.js";
+import { HostRefusal, REINSTALL_FIX } from "../host-refusal.js";
 
 /** Why a start failed and what fixes it, from a host refusal and a weivel plugin error alike; anything else is fixed by installing again. */
 export function startRefusalOf(error: unknown): { detail: string; fix: string } {

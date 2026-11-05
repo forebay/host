@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { activityPublisher } from "../context/activity.js";
 import { scopedLogger } from "../context/log.js";
 import type { HostPlaces } from "../context/places.js";
@@ -29,6 +30,8 @@ import { startUpdateTimer } from "./update-timer.js";
 import type { UpdateTimer } from "./update-timer.js";
 
 type Applied = ReturnType<UpdatesService["apply"]>;
+/** The application layer of a host's settings, under the config directory `paths.resolve` answers. */
+const SETTINGS_FILE_NAME = "settings.json";
 /** What a start runs: its plugins, the whole run it records, the run record it stamps, and what it could not record. */
 type StartPlan = Pick<Applied, "plugins" | "run" | "runRecord" | "unrecorded">;
 
@@ -231,6 +234,7 @@ function proxyOf(started: Started, running: RunningHost, options: JavascriptHost
   const scope = () => ({ home: identity.home, portable: places.portable, plugin: "proxy", config: {} });
   return serveProxy({
     hostId: identity.id,
+    settingsFile: join(runtime.paths.resolve({ home: identity.home }).config, SETTINGS_FILE_NAME),
     loaded: running.loaded,
     settings: started.settings,
     library: started.library,
