@@ -1,72 +1,51 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-import { REPOSITORY_ROOT } from "../__fixtures__/context.js";
-import { openRuntime, siblingRuntime } from "../runtime/open.js";
+import { describe, expect, it } from "vitest";
+import type { Runtime } from "../runtime/open.js";
 import { cacheBundles } from "./cache-bundles.js";
 
-interface Bundle {
-  manifestVersion?: string;
-  entry?: string;
+type Locate = Runtime["cache"]["locate"];
+type Answer = ReturnType<Locate>;
+
+function runtimeAnswering(answer: (plugins: Record<string, string>) => Answer): { runtime: Pick<Runtime, "cache">; asked: Record<string, string>[] } {
+  const asked: Record<string, string>[] = [];
+  const locate: Locate = ({ plugins }) => {
+    asked.push(plugins);
+    return answer(plugins);
+  };
+  return { runtime: { cache: { locate } }, asked };
 }
 
-const RUNTIME = openRuntime(siblingRuntime(REPOSITORY_ROOT));
-
-let cache: string;
-
-function sha256Of(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
-
-function installed(id: string, version: string, bundle: Bundle = {}): string {
-  const directory = join(cache, "bundles", id, version);
-  mkdirSync(directory, { recursive: true });
-  const files: Record<string, string> = { "plugin.json": JSON.stringify({ id, api: 1, version: bundle.manifestVersion ?? version, entry: "index.js" }) };
-  if (bundle.entry !== undefined) files[bundle.entry] = "export default {};";
-  for (const [key, content] of Object.entries(files)) writeFileSync(join(directory, key), content);
-  const hashes = Object.fromEntries(Object.entries(files).map(([key, content]) => [key, sha256Of(content)]));
-  writeFileSync(join(directory, ".installed.json"), JSON.stringify({ files: hashes }));
-  return directory;
-}
-
-beforeEach(() => {
-  cache = mkdtempSync(join(tmpdir(), "host-cache-bundles-"));
-});
-
-afterEach(() => {
-  rmSync(cache, { recursive: true, force: true });
-});
-
-afterAll(() => RUNTIME.close());
+const LOCATED: Answer = { located: [{ id: "a", version: "1.0.0", directory: "/c/bundles/a/1.0.0", manifest: "/c/bundles/a/1.0.0/plugin.json", entry: "/c/bundles/a/1.0.0/index.js" }], problems: [] };
+const DAMAGED: Answer = { located: [], problems: [{ id: "a", version: "1.0.0", detail: "index.js is short", fix: "install it again", file: "index.js" }] };
 
 describe("cacheBundles", () => {
-  it("answers no entry path when the declared entry is missing", () => {
-    installed("a", "1.0.0");
-    expect(cacheBundles(RUNTIME, cache, { a: "1.0.0" }).locate("a")?.entryPath).toBeNull();
+  it("answers each bundle cache.locate found as an entry, an absent entry as null", () => {
+    const { runtime } = runtimeAnswering(() => ({ located: [{ ...(LOCATED.located[0] as Answer["located"][number]), entry: undefined }], problems: [] }));
+    const entry = cacheBundles(runtime, "/c", { a: "1.0.0" }).locate("a");
+    expect(entry).toEqual({ id: "a", version: "1.0.0", manifestPath: "/c/bundles/a/1.0.0/plugin.json", entryPath: null });
   });
 
-  it("lists every id it was given that is installed, ordered by id", () => {
-    installed("b", "1.0.0", { entry: "index.js" });
-    installed("a", "1.0.0", { entry: "index.js" });
-    const listed = cacheBundles(RUNTIME, cache, { b: "1.0.0", c: "1.0.0", a: "1.0.0" }).list();
-    expect(listed.map((entry) => entry.id)).toEqual(["a", "b"]);
+  it("asks cache.locate for every version it was given on list, and for one id on locate", () => {
+    const { runtime, asked } = runtimeAnswering(() => LOCATED);
+    const bundles = cacheBundles(runtime, "/c", { b: "1.0.0", a: "1.0.0" });
+    bundles.list();
+    bundles.locate("a");
+    expect(asked).toEqual([{ b: "1.0.0", a: "1.0.0" }, { a: "1.0.0" }]);
   });
 
-  it("refuses a version whose plugin.json names another version", () => {
-    installed("a", "1.0.0", { entry: "index.js", manifestVersion: "1.0.1" });
-    const source = cacheBundles(RUNTIME, cache, { a: "1.0.0" });
-    expect(source.locate("a")).toBeNull();
-    expect(source.problems()).toEqual([expect.objectContaining({ id: "a", version: "1.0.0" })]);
-    expect(source.problems()[0]?.detail).toContain("1.0.1");
+  it("locates nothing for an id it was not given, without asking", () => {
+    const { runtime, asked } = runtimeAnswering(() => LOCATED);
+    expect(cacheBundles(runtime, "/c", { a: "1.0.0" }).locate("other")).toBeNull();
+    expect(asked).toEqual([]);
   });
 
-  it("reports a version the cache check finds damaged, naming the file", () => {
-    const directory = installed("a", "1.0.0", { entry: "index.js" });
-    writeFileSync(join(directory, "index.js"), "export default {}!");
-    const source = cacheBundles(RUNTIME, cache, { a: "1.0.0" });
-    expect(source.locate("a")).toBeNull();
-    expect(source.problems()).toEqual([expect.objectContaining({ id: "a", version: "1.0.0", file: "index.js" })]);
+  it("keeps each id's latest problem and drops it once the id locates cleanly", () => {
+    let answer = DAMAGED;
+    const { runtime } = runtimeAnswering(() => answer);
+    const bundles = cacheBundles(runtime, "/c", { a: "1.0.0" });
+    expect(bundles.locate("a")).toBeNull();
+    expect(bundles.problems()).toEqual(DAMAGED.problems);
+    answer = LOCATED;
+    expect(bundles.locate("a")?.id).toBe("a");
+    expect(bundles.problems()).toEqual([]);
   });
 });

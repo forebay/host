@@ -104,6 +104,7 @@ export interface CacheService {
   installed(argument: { cache: string; platform?: string; [key: string]: unknown }): { bundles: { [key: string]: string[] }; libraries: { [key: string]: string[] } };
   check(argument: { directory: string; [key: string]: unknown }): { kind: "absent" | "intact" | "damaged"; detail?: string; fix?: string; file?: string };
   damaged(argument: { cache: string; platform?: string; [key: string]: unknown }): { damaged: { id: string; version: string; detail: string; fix: string; file?: string }[] };
+  locate(argument: { cache: string; plugins: { [key: string]: string }; [key: string]: unknown }): { located: { id: string; version: string; directory: string; manifest: string; entry?: string }[]; problems: { id: string; version: string; detail: string; fix: string; file?: string }[] };
   platform(argument: { [key: string]: unknown }): { platform: string };
   sweep(argument: { cache: string; state: string; [key: string]: unknown }): { removed: string[] };
 }
