@@ -154,7 +154,13 @@ interface Timers {
   checks: AbortController;
 }
 
+/** No timer at all, for a one-shot start beside a session that may be live: it must not check, switch or prune anything of that session's. */
+function noTimers(): Timers {
+  return { process: { stop: () => undefined }, updates: { lastCheck: () => null, stop: async () => undefined }, checks: new AbortController() };
+}
+
 function timersOf(started: Started, options: JavascriptHostOptions, onUnheld: () => void): Timers {
+  if (!options.session) return noTimers();
   const { runtime, places, identity, applied: answer } = started;
   const process = startProcessTimer({
     runtime,

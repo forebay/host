@@ -12,6 +12,10 @@
     "login": {
       "label": "Log in",
       "call": { "service": "provider-a:accounts", "method": "login", "argument": { "label": "default" } }
+    },
+    "wait": {
+      "label": "Wait",
+      "call": { "service": "provider-a:accounts", "method": "wait", "argument": { "milliseconds": 0 } }
     }
   }
 }

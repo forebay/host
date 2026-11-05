@@ -79,6 +79,7 @@ function providerFor(id: string): Provider {
 
 function loginService(context: PluginContext) {
   return {
+    wait: (argument: { milliseconds: number }) => new Promise((resolve) => setTimeout(() => resolve({ waited: argument.milliseconds }), argument.milliseconds)),
     login: (argument: { label: string }) => {
       const accounts = context.services.get(context.service<AccountsService>("accounts"));
       if (accounts === undefined) throw new Error("no accounts service");

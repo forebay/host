@@ -18,6 +18,7 @@ export const FRONT_DOOR = "fixture-front-door";
 export const PROVIDERS = ["provider-a", "provider-b"];
 
 const START_TIMEOUT_MILLISECONDS = 60000;
+const FIXTURE_VERSION = "1.0.0";
 
 /** A temp machine with the foundation, a fixture front door and two fixture providers installed from a local catalog. */
 export interface ProxyWorld {
@@ -47,25 +48,32 @@ function freePort(): Promise<number> {
   });
 }
 
-function providerRepository(base: string, id: string): string {
-  const manifest = id === "provider-a" ? {} : {
+function providerRepository(base: string, id: string, version: string): string {
+  const manifest = id === "provider-a" ? { version } : {
+    version,
     id,
     services: { provides: [`${id}:accounts`], consumes: ["accounts"] },
     actions: { login: { label: "Log in", call: { service: `${id}:accounts`, method: "login", argument: { label: "default" } } } },
   };
-  return pluginRepository(join(base, "repositories", id), "provider-a", { manifest });
+  return pluginRepository(join(base, "repositories", `${id}-${version}`), "provider-a", { manifest });
 }
 
-async function bundledPlugins(base: string): Promise<string[]> {
+async function bundledPlugins(base: string, providerAVersion: string): Promise<string[]> {
   const front = join(base, "stage", FRONT_DOOR);
   await bundlePlugin(pluginRepository(join(base, "repositories", FRONT_DOOR), FRONT_DOOR), front);
   const providers: string[] = [];
   for (const id of PROVIDERS) {
-    const out = join(base, "stage", id);
-    await bundlePlugin(providerRepository(base, id), out);
+    const version = id === "provider-a" ? providerAVersion : FIXTURE_VERSION;
+    const out = join(base, "stage", `${id}-${version}`);
+    await bundlePlugin(providerRepository(base, id, version), out);
     providers.push(out);
   }
   return [front, ...providers];
+}
+
+/** Rebuilds the world's catalog in place with provider-a at `version`, so an update check would find it. */
+export async function publishProviderA(world: ProxyWorld, version: string): Promise<void> {
+  await builtCatalog(world.base, currentPlatformKey(), await bundledPlugins(world.base, version));
 }
 
 /** Writes a setting of the session host through the runtime, as a user changing it would. */
@@ -86,7 +94,7 @@ export async function installedProxyWorld(): Promise<ProxyWorld> {
   const base = mkdtempSync(join(tmpdir(), "host-proxy-"));
   const environment = environmentUnder(base);
   mkdirSync(environment.TEMP as string, { recursive: true });
-  const { catalog, javascriptHostVersion } = await builtCatalog(base, currentPlatformKey(), await bundledPlugins(base));
+  const { catalog, javascriptHostVersion } = await builtCatalog(base, currentPlatformKey(), await bundledPlugins(base, FIXTURE_VERSION));
   runForebayHost({ base, environment }, ["install", "--catalog", catalog, ...[FRONT_DOOR, ...PROVIDERS].flatMap((id) => ["--plugin", id])]);
   const state = environment.SPISOR_STATE as string;
   const hostEntry = join(environment.SPISOR_CACHE as string, "bundles", "javascript-host", javascriptHostVersion, "host.js");

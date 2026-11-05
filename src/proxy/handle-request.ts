@@ -51,13 +51,21 @@ interface RateLimited {
 }
 
 /**
- * What walking the chain has found so far: the model the application asked for, the latest reset of
- * every rate-limited answer with the last one's headers, and the last failure that let the walk go on.
+ * What walking the chain has found so far: the model the application asked for, whether the entry
+ * being tried is the last, whether an entry served it a success, the latest reset of every
+ * rate-limited answer with the last one's headers, and the last failure that let the walk go on.
  */
 interface ChainWalk {
   requested: string;
+  lastEntry: boolean;
+  served: boolean;
   limited?: RateLimited;
   failure?: unknown;
+}
+
+/** How a log line about an entry that could not serve ends: with who serves next, or that nobody is left. */
+function whatFollows(walk: ChainWalk): string {
+  return walk.lastEntry ? `and no chain entry is left to serve ${walk.requested}` : `so the next chain entry serves ${walk.requested}`;
 }
 
 function messageOf(error: unknown): string {
@@ -107,6 +115,7 @@ function latestReset(earlier: number | undefined, later: number | undefined): nu
 async function answered(state: ProxyState, entry: Assignment, answer: ProviderAnswer, response: ServerResponse, signal: AbortSignal, walk: ChainWalk): Promise<boolean> {
   if (answer.kind === "response") {
     writeReply(response, await state.frontDoor.encodeResponse(answer.response));
+    walk.served = true;
     return true;
   }
   if (answer.kind === "failure") {
@@ -117,13 +126,16 @@ async function answered(state: ProxyState, entry: Assignment, answer: ProviderAn
     }
     const resetAt = latestReset(walk.limited?.resetAt, outcome.resetAt);
     walk.limited = { headers: answer.failure.headers, ...(resetAt === undefined ? {} : { resetAt }) };
-    state.log.warn(`${entry.model} is rate limited, so the next chain entry serves ${walk.requested}`);
+    state.log.warn(`${entry.model} is rate limited, ${whatFollows(walk)}`);
     return false;
   }
   const relayed = await relayStream(answer.events, { frontDoor: state.frontDoor, checks: state.checks, response, signal, onMidStreamFailure: (error) => state.log.warn(`a stream failed after its first event: ${messageOf(error)}`) });
-  if (relayed.kind !== "failed-before-bytes") return true;
+  if (relayed.kind !== "failed-before-bytes") {
+    walk.served = relayed.kind === "relayed";
+    return true;
+  }
   walk.failure = relayed.error;
-  state.log.warn(`a stream failed on its first event, so the next chain entry serves it: ${messageOf(relayed.error)}`);
+  state.log.warn(`the stream of ${entry.model} failed on its first event, ${whatFollows(walk)}: ${messageOf(relayed.error)}`);
   return false;
 }
 
@@ -141,7 +153,7 @@ async function triedEntry(state: ProxyState, request: IrRequest, entry: Assignme
   } catch (error) {
     if (signal.aborted) return true;
     walk.failure = error;
-    state.log.warn(`${entry.provider} failed ${entry.model}, so the next chain entry serves it: ${messageOf(error)}`);
+    state.log.warn(`${entry.provider} failed ${entry.model}, ${whatFollows(walk)}: ${messageOf(error)}`);
     return false;
   }
   if (signal.aborted) return true;
@@ -157,14 +169,20 @@ async function exhausted(state: ProxyState, response: ServerResponse, walk: Chai
   writeReply(response, await state.frontDoor.rateLimitReply({ upstreamHeaders: headers, ...(resetAt === undefined ? {} : { resetAt }), now: state.now(), timeZone: state.timeZone }));
 }
 
-/** Each entry's provider in order; a rate-limited answer or a failure before any byte moves to the next, and a client gone away ends the walk silently. */
-/** @implNote A fallback serving is always logged: the user asked for one model and is answered by another. */
+/**
+ * Each entry's provider in order; a rate-limited answer or a failure before any byte moves to the
+ * next, and a client gone away ends the walk silently.
+ *
+ * @implNote A fallback serving a success is always logged: the user asked for one model and is
+ * answered by another.
+ */
 async function servedByChain(state: ProxyState, request: IrRequest, chain: Assignment[], response: ServerResponse, signal: AbortSignal): Promise<void> {
-  const walk: ChainWalk = { requested: request.model };
+  const walk: ChainWalk = { requested: request.model, lastEntry: false, served: false };
   for (const [index, entry] of chain.entries()) {
     if (signal.aborted) return;
+    walk.lastEntry = index === chain.length - 1;
     if (await triedEntry(state, request, entry, response, signal, walk)) {
-      if (index > 0 && !signal.aborted) state.log.warn(`${entry.model} served ${request.model} in place of ${chain[0]?.model}`);
+      if (index > 0 && walk.served && !signal.aborted) state.log.warn(`${entry.model} served ${request.model} in place of ${chain[0]?.model}`);
       return;
     }
   }

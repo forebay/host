@@ -1,7 +1,7 @@
 import type { Plugin } from "@weivel/typescript";
 import type { FrontDoor, IrResponse, WireRequest } from "../../../contracts/index.js";
 
-const TIERS = ["plain", "limited", "exhausted", "waiting", "failing", "firstfail", "thirdfail", "hanging", "stalling"];
+const TIERS = ["plain", "limited", "exhausted", "waiting", "failing", "firstfail", "thirdfail", "hanging", "stalling", "fallbackfails"];
 const ROUTED_PATH = "/v1/messages";
 const JSON_HEADERS = { "content-type": "application/json" };
 /** Matches no provider model, so the tiers are the fallback and the stored model map decides every chain. */
