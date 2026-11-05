@@ -40,13 +40,18 @@ export function cachedForebayLibrary(cache: string, version: string, platformKey
   return { declarationPath: join(directory, DECLARATION_FILE), binaryDirectory: directory, contractsDirectory: join(directory, CONTRACTS_FOLDER) };
 }
 
-/** The `siblings/forebay-library` checkout, built with `cmake --build build --config Release`. */
+/**
+ * The `siblings/forebay-library` checkout, built with `cmake --build build --config Release`.
+ *
+ * @implNote Its CMake sets only the runtime output folder, so the Windows DLL lands in
+ * `build/bin/Release` while a shared object or dylib stays in `build` itself.
+ */
 export function siblingForebayLibrary(root: string): ForebayLibrarySource {
   const checkout = join(root, "siblings", "forebay-library");
-  const built = join(checkout, "build", "bin");
+  const built = join(checkout, "build");
   return {
     declarationPath: join(checkout, DECLARATION_FILE),
-    binaryDirectory: process.platform === "win32" ? join(built, "Release") : built,
+    binaryDirectory: process.platform === "win32" ? join(built, "bin", "Release") : built,
     contractsDirectory: join(checkout, CONTRACTS_FOLDER),
   };
 }
