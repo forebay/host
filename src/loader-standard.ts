@@ -10,7 +10,7 @@ export interface LoaderApplication {
 
 /**
  * What a loader declares about the application it loads into, the PATH commands it asks for and
- * the background hosts it keeps running.
+ * the background hosts it keeps running and the plugins it cannot run without.
  *
  * @remarks `packages` is the manifest shape of the host registry design (5.2), so
  * `runtime.install.packages` merges the user's `packages.json` over it unchanged.
@@ -19,4 +19,5 @@ export interface LoaderStandard {
   application: LoaderApplication;
   pathCommands: { requested: string[]; minimum: 0 | 1 };
   background: string[];
+  plugins: string[];
 }
