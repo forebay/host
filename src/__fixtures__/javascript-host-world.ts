@@ -1,12 +1,14 @@
 import { spawnSync } from "node:child_process";
 import type { SpawnSyncReturns } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { currentPlatformKey } from "@weivel/typescript/host";
 import { bundleJavascriptHost } from "../build/bundle-javascript-host.js";
 import { bundlePlugin } from "../build/bundle-plugin.js";
 import { bundleKoffiLibrary } from "../build/koffi-library.js";
+import { siblingForebayLibrary } from "../forebay-library/open.js";
+import { libraryBinaryName } from "../runtime/cached-runtime.js";
 import { REPOSITORY_ROOT } from "./context.js";
 import { pluginRepository } from "./plugin-repository.js";
 
@@ -44,7 +46,19 @@ function stagedRuntimeLibrary(stage: string): string {
   return directory;
 }
 
-function environmentUnder(base: string): Record<string, string> {
+/** The apps library as a catalog folder: its declaration, its binary and its contract schemas. */
+function stagedForebayLibrary(stage: string, platform: string): string {
+  const source = siblingForebayLibrary(REPOSITORY_ROOT);
+  const directory = join(stage, "apps");
+  mkdirSync(directory, { recursive: true });
+  copyFileSync(source.declarationPath, join(directory, "library.json"));
+  const binary = libraryBinaryName("apps", platform);
+  copyFileSync(join(source.binaryDirectory, binary), join(directory, binary));
+  cpSync(source.contractsDirectory, join(directory, "contracts"), { recursive: true });
+  return directory;
+}
+
+export function environmentUnder(base: string): Record<string, string> {
   const user = join(base, "user");
   const systemRoot = process.env.SystemRoot;
   const system: Record<string, string> = systemRoot === undefined ? {} : { SystemRoot: systemRoot, PATH: `${dirname(process.execPath)};${join(systemRoot, "System32")}` };
@@ -76,23 +90,24 @@ export function runForebayHost(world: Pick<JavascriptHostWorld, "environment" | 
 }
 
 /** Runs `node` on `arguments_` in the world's environment, answering the whole run. */
-export function runNode(world: JavascriptHostWorld, arguments_: string[]): SpawnSyncReturns<string> {
+export function runNode(world: Pick<JavascriptHostWorld, "environment" | "base">, arguments_: string[]): SpawnSyncReturns<string> {
   return spawnSync(process.execPath, arguments_, { cwd: world.base, env: world.environment, encoding: "utf8", timeout: RUN_TIMEOUT_MILLISECONDS });
 }
 
-async function builtCatalog(base: string, platform: string): Promise<{ catalog: string; javascriptHostVersion: string }> {
+/**
+ * Builds a local catalog of the native forebay-host, the runtime, koffi and apps libraries, the
+ * javascript-host bundle and the plugin folders `plugins` names, answering its index.
+ */
+export async function builtCatalog(base: string, platform: string, plugins: string[]): Promise<{ catalog: string; javascriptHostVersion: string }> {
   const stage = join(base, "stage");
   const javascriptHost = await bundleJavascriptHost(join(stage, "javascript-host"));
-  const viewer = join(stage, "viewer");
-  await bundlePlugin(pluginRepository(join(base, "repositories", "viewer"), "viewer"), viewer);
   const koffi = join(stage, "koffi");
   bundleKoffiLibrary(join(REPOSITORY_ROOT, "node_modules", "koffi"), platform, koffi);
   const catalog = join(base, "catalog");
   runForebayHost({ base, environment: environmentUnder(base) }, [
     "catalog",
     "build",
-    "--plugin",
-    viewer,
+    ...plugins.flatMap((plugin) => ["--plugin", plugin]),
     "--host",
     dirname(javascriptHost.files["host.json"] as string),
     "--host",
@@ -101,6 +116,8 @@ async function builtCatalog(base: string, platform: string): Promise<{ catalog: 
     `runtime=${stagedRuntimeLibrary(stage)}@${platform}`,
     "--library",
     `koffi=${koffi}@${platform}`,
+    "--library",
+    `apps=${stagedForebayLibrary(stage, platform)}@${platform}`,
     "--out",
     catalog,
   ]);
@@ -108,8 +125,7 @@ async function builtCatalog(base: string, platform: string): Promise<{ catalog: 
 }
 
 /**
- * Builds a local catalog of the native forebay-host, the runtime and koffi libraries, the
- * javascript-host bundle and the viewer plugin, then installs it with viewer requested.
+ * Builds a local catalog of the foundation and the viewer plugin, then installs it with viewer requested.
  *
  * @implNote The install registers no loader, so it requests no command and never writes the user PATH.
  */
@@ -118,7 +134,9 @@ export async function installedWorld(): Promise<JavascriptHostWorld> {
   const environment = environmentUnder(base);
   mkdirSync(environment.TEMP as string, { recursive: true });
   const platform = currentPlatformKey();
-  const { catalog, javascriptHostVersion } = await builtCatalog(base, platform);
+  const viewer = join(base, "stage", "viewer");
+  await bundlePlugin(pluginRepository(join(base, "repositories", "viewer"), "viewer"), viewer);
+  const { catalog, javascriptHostVersion } = await builtCatalog(base, platform, [viewer]);
   runForebayHost({ base, environment }, ["install", "--catalog", catalog, "--plugin", "viewer"]);
   const cache = environment.SPISOR_CACHE as string;
   return { base, environment, cache, state: environment.SPISOR_STATE as string, hostEntry: join(cache, "bundles", "javascript-host", javascriptHostVersion, "host.js") };

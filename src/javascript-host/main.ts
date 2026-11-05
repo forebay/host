@@ -7,9 +7,10 @@ import type { JavascriptHost } from "./start-javascript-host.js";
 import { startJavascriptHost } from "./start-javascript-host.js";
 import { processEnvironment } from "../process-environment.js";
 import { REINSTALL_FIX } from "./cached-layer.js";
+import { ACTION_MODE, actionRequestOf, runActionMode } from "./action.js";
 
 const STOP_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
-const USAGE_FIX = "start it as <runtime executable> host.js <host id>";
+const USAGE_FIX = "start it as <runtime executable> host.js <host id>, or with action <plugin> <action> <input json object> after the host id";
 
 function bundleFile(): string {
   return fileURLToPath(import.meta.url);
@@ -57,7 +58,7 @@ async function runHeldHost(hostId: string): Promise<void> {
   };
   for (const signal of STOP_SIGNALS) process.on(signal, stop);
   try {
-    host = await startJavascriptHost({ hostId, bundleFile: bundleFile(), environment: processEnvironment(), held: true, onUnheld: (exitCode) => process.exit(exitCode), writeError });
+    host = await startJavascriptHost({ hostId, bundleFile: bundleFile(), environment: processEnvironment(), held: true, session: true, onUnheld: (exitCode) => process.exit(exitCode), writeError });
   } catch (error) {
     writeError(refusalText(hostId, error));
     process.exit(1);
@@ -70,11 +71,28 @@ export function runSessionHost(loaderId: string): Promise<JavascriptHost> {
   return startSessionHost(loaderId, bundleFile());
 }
 
-if (isThisProcessEntry()) {
-  const hostId = process.argv[2];
-  if (hostId === undefined || process.argv.length !== 3) {
-    writeError(`the javascript-host takes exactly one host id\nfix: ${USAGE_FIX}\n`);
+/** Runs one plugin action on host `hostId`'s plugins and exits with its code. */
+async function runOneAction(hostId: string, arguments_: string[]): Promise<void> {
+  const request = actionRequestOf(arguments_);
+  if (request === undefined) {
+    writeError(`the action mode takes a plugin, an action and its input as a JSON object\nfix: ${USAGE_FIX}\n`);
     process.exit(2);
   }
-  void runHeldHost(hostId);
+  try {
+    const code = await runActionMode(request, { hostId, bundleFile: bundleFile(), environment: processEnvironment(), writeError, writeOutput: (text) => process.stdout.write(text) });
+    process.exit(code);
+  } catch (error) {
+    writeError(refusalText(hostId, error));
+    process.exit(1);
+  }
+}
+
+if (isThisProcessEntry()) {
+  const [hostId, mode, ...rest] = process.argv.slice(2);
+  if (hostId !== undefined && mode === undefined) void runHeldHost(hostId);
+  else if (hostId !== undefined && mode === ACTION_MODE) void runOneAction(hostId, rest);
+  else {
+    writeError(`the javascript-host takes a host id, and action with its arguments after it\nfix: ${USAGE_FIX}\n`);
+    process.exit(2);
+  }
 }

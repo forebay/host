@@ -30,10 +30,10 @@ function invoke(implementation: Record<string, unknown>, plugin: string, binding
   return Promise.resolve(method.call(implementation, argument));
 }
 
-async function call(running: RunningHost, plugin: string, binding: UiBinding, row: RowArgument, timeoutMs: number): Promise<CapabilityCall<unknown>> {
+async function call(running: RunningHost, plugin: string, binding: UiBinding, row: RowArgument, timeoutMs: number, input: Record<string, unknown> = {}): Promise<CapabilityCall<unknown>> {
   const target = bindingTarget(running, plugin, binding.service);
   if (target.state !== "callable") return { ok: false, error: target.error };
-  const argument = { ...binding.argument, ...rowKeysOf(row) };
+  const argument = { ...binding.argument, ...input, ...rowKeysOf(row) };
   return callCapability(plugin, labelOf(binding), timeoutMs, () => invoke(target.implementation, plugin, binding, argument), running.loaded.scheduler);
 }
 
@@ -49,11 +49,14 @@ export function callBinding(running: RunningHost, plugin: string, binding: UiBin
   return call(running, plugin, binding, row, DEFAULT_CALL_TIMEOUT_MS);
 }
 
-/** Runs one of a plugin's declared actions under the invoke deadline; a row passes `{ item: <id> }`. */
-export async function runAction(running: RunningHost, plugin: string, actionId: string, row: RowArgument = {}): Promise<CapabilityCall<unknown>> {
+/**
+ * Runs one of a plugin's declared actions under the invoke deadline, `input` laid over its declared
+ * argument; a row passes `{ item: <id> }`, which no input overrides.
+ */
+export async function runAction(running: RunningHost, plugin: string, actionId: string, row: RowArgument = {}, input: Record<string, unknown> = {}): Promise<CapabilityCall<unknown>> {
   const action = deployedManifest(running, plugin)?.actions?.[actionId];
   if (action === undefined) {
     return { ok: false, error: pluginError(plugin, `${plugin} declares no action ${actionId}`, `run an action ${plugin} lists under actions`) };
   }
-  return call(running, plugin, action.call, row, DEFAULT_INVOKE_TIMEOUT_MS);
+  return call(running, plugin, action.call, row, DEFAULT_INVOKE_TIMEOUT_MS, input);
 }

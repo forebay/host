@@ -21,7 +21,7 @@ function writeError(text: string): void {
  * to stderr, never left as an unhandled rejection that would take the application down.
  */
 export async function startSessionHost(loaderId: string, bundleFile: string): Promise<JavascriptHost> {
-  const host = await startJavascriptHost({ hostId: loaderId, bundleFile, environment: processEnvironment(), held: false, writeError });
+  const host = await startJavascriptHost({ hostId: loaderId, bundleFile, environment: processEnvironment(), held: false, session: true, writeError });
   const stopOnExit = () => {
     host.stop().catch((error: unknown) => writeError(`spisor could not stop the session host: ${messageOf(error)}\nfix: ${STOP_FIX}\n`));
   };

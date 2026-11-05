@@ -6,7 +6,7 @@ export const CHECK_MILLISECONDS = 5000;
 export const PRUNE_FAILURES_BEFORE_EXIT = 6;
 
 export interface ProcessTimerOptions {
-  runtime: Pick<Runtime, "processes">;
+  runtime: { processes: Pick<Runtime["processes"], "recordRun" | "prune" | "removeRuns"> };
   state: string;
   hostId: string;
   run: Record<string, string>;

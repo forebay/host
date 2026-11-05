@@ -56,6 +56,12 @@ describe("the javascript-host bundle", () => {
     expect(runRecords()).toEqual([]);
   });
 
+  it("publishes an empty environment as its ready record when no plugin provides a front door", () => {
+    const record = JSON.parse(readFileSync(join(world.state, "processes", `${SESSION_HOST}.ready.json`), "utf8")) as Record<string, unknown>;
+    expect(record.environment).toEqual({});
+    expect(record.refused).toBeUndefined();
+  });
+
   it("records what it runs as the host's references", () => {
     const references = JSON.parse(readFileSync(join(world.state, "bundles", `${SESSION_HOST}.json`), "utf8")) as { run: Record<string, string> };
     expect(references.run).toMatchObject({ viewer: "1.0.0" });
