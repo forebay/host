@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type {
   DecodeRequestAnswer, EncodeEventAnswer, EncodeResponseAnswer, Extensions, HandleIrAnswer, ImageBlock, IrBlock,
   IrEventStream, IrFailure, IrMessage, IrRequest, IrResponse, IrStopReason, IrStreamEvent, IrThinking, IrTool,
-  IrToolChoice, IrUsage, ModelEntry, ModelsAnswer, Profile, RateLimitReplyAnswer, TextBlock, ThinkingBlock,
+  IrToolChoice, IrUsage, ModelEntry, ModelsAnswer, PassThrough, Profile, ProfileAnswer, RateLimitReplyAnswer, TextBlock, ThinkingBlock,
   ToolResultBlock, ToolUseBlock, UnknownBlock, WireReply,
 } from "./index.js";
 
@@ -81,6 +81,9 @@ const eventAnswer: EncodeEventAnswer = { chunks: ["a"] };
 const rateLimit: RateLimitReplyAnswer = reply;
 const models: ModelsAnswer = { models: [modelEntry], defaultModelId: "m" };
 const handled: HandleIrAnswer = response;
+const passThrough: PassThrough = { passThrough: true };
+const profileAnswer: ProfileAnswer = profile;
+const passedThrough: DecodeRequestAnswer = passThrough;
 
 const typedLiterals: Record<string, unknown> = {
   Extensions: extensions, NullableString: null, NullableCount: 0, BlockIndex: 0, IrStopReason: stopReason, IrUsage: usage,
@@ -91,7 +94,7 @@ const typedLiterals: Record<string, unknown> = {
   ContentBlockStopEvent: events[6], MessageDeltaEvent: events[7], MessageStopEvent: events[8], ErrorEvent: events[9],
   IrStreamEvent: events[2], IrFailure: failure, Profile: profile, WireReply: reply, DecodeRequestAnswer: decoded,
   EncodeResponseAnswer: encoded, EncodeEventAnswer: eventAnswer, RateLimitReplyAnswer: rateLimit, ModelEntry: modelEntry,
-  ModelsAnswer: models, IrEventStream: eventStream, HandleIrAnswer: handled,
+  ModelsAnswer: models, IrEventStream: eventStream, HandleIrAnswer: handled, PassThrough: passThrough, ProfileAnswer: profileAnswer,
 };
 
 describe("forebay contract types", () => {
@@ -107,6 +110,11 @@ describe("forebay contract types", () => {
       expect(validate, name).toBeDefined();
       expect(validate!(typedLiterals[name]), `${name}: ${ajv.errorsText(validate!.errors)}`).toBe(true);
     }
+  });
+
+  it("accepts a pass-through as a decodeRequest answer", () => {
+    const validate = ajv.getSchema(definitionReferences.get("DecodeRequestAnswer")!)!;
+    expect(validate(passedThrough), ajv.errorsText(validate.errors)).toBe(true);
   });
 
   it("accepts every typed event literal under the stream event union", () => {

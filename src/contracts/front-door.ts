@@ -18,7 +18,14 @@ export interface WireReply {
   status: number;
 }
 
-export type DecodeRequestAnswer = IrRequest | IrFailure;
+/** A request the front door does not route, which the session host forwards undecoded to the profile's upstream. */
+export interface PassThrough {
+  passThrough: true;
+}
+
+export type ProfileAnswer = Profile;
+
+export type DecodeRequestAnswer = IrRequest | IrFailure | PassThrough;
 
 export type EncodeResponseAnswer = WireReply;
 
@@ -46,7 +53,7 @@ export interface RateLimitReplyArgument {
 
 /** What a plugin providing the `front-door` capability hands to `context.provide`. */
 export interface FrontDoor {
-  profile(): Profile | Promise<Profile>;
+  profile(): ProfileAnswer | Promise<ProfileAnswer>;
   decodeRequest(request: WireRequest): DecodeRequestAnswer | Promise<DecodeRequestAnswer>;
   encodeResponse(response: IrResponse): EncodeResponseAnswer | Promise<EncodeResponseAnswer>;
   encodeEvent(event: IrStreamEvent): EncodeEventAnswer | Promise<EncodeEventAnswer>;
