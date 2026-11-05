@@ -31,3 +31,20 @@ export { bundleKoffiLibrary } from "./build/koffi-library.js";
 export { BuildRefusal } from "./build/build-refusal.js";
 export type { LoaderApplication, LoaderStandard, PackageMapping } from "./loader-standard.js";
 export type * from "./contracts/index.js";
+export { openForebayLibrary, forebayLibraryServices, cachedForebayLibrary, siblingForebayLibrary, FOREBAY_LIBRARY_ID } from "./forebay-library/open.js";
+export type { ForebayLibrary, ForebayLibrarySource, HostService } from "./forebay-library/open.js";
+export { Accounts, Apps, Routing } from "./forebay-library/types.js";
+export type {
+  AccountOutcome,
+  AccountsService,
+  AppsService,
+  Assignment,
+  CatalogModel,
+  ModelMap,
+  ModelsArgument,
+  ProviderCatalog,
+  Refusable,
+  RoutingNotice,
+  RoutingService,
+  StoredAccount,
+} from "./forebay-library/types.js";

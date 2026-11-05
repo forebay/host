@@ -10,15 +10,19 @@ export interface HostLibraries {
   koffi: string;
 }
 
-/** The runtime's shared library file name on the OS a platform key such as `linux-x64` names. */
-export function runtimeBinaryName(platformKey: string): string {
+/** The file name of the shared library a declaration's `binary` names, on the OS a platform key such as `linux-x64` names. */
+export function libraryBinaryName(binary: string, platformKey: string): string {
   const os = platformKey.split("-")[0];
-  if (os === "win32") return "runtime.dll";
-  return os === "darwin" ? "libruntime.dylib" : "libruntime.so";
+  if (os === "win32") return `${binary}.dll`;
+  return os === "darwin" ? `lib${binary}.dylib` : `lib${binary}.so`;
+}
+
+export function runtimeBinaryName(platformKey: string): string {
+  return libraryBinaryName("runtime", platformKey);
 }
 
 /** Where library `id` at `version` is installed for `platformKey`. */
-function libraryDirectory(cache: string, id: string, version: string, platformKey: string): string {
+export function libraryDirectory(cache: string, id: string, version: string, platformKey: string): string {
   return join(cache, "libraries", id, version, platformKey);
 }
 

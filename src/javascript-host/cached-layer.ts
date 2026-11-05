@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { HostRefusal } from "../host-refusal.js";
 import { isRecord } from "../plugins/is-record.js";
+import { cachedForebayLibrary, FOREBAY_LIBRARY_ID } from "../forebay-library/open.js";
+import type { ForebayLibrarySource } from "../forebay-library/open.js";
 import { cachedRuntime } from "../runtime/cached-runtime.js";
 import type { HostLibraries } from "../runtime/cached-runtime.js";
-import type { RuntimeSource } from "../runtime/open.js";
+import type { Runtime, RuntimeSource } from "../runtime/open.js";
 
 export const LAYER_ID = "javascript-host";
 export const REINSTALL_FIX = "run forebay-host install again";
@@ -46,4 +48,14 @@ export function cachedLayerOf(bundleFile: string): CachedLayer {
   const { cache, version } = cacheOf(bundleFile);
   const libraries = hintedLibraries(cache);
   return { cache, version, libraries, source: cachedRuntime(cache, libraries) };
+}
+
+/**
+ * The `apps` library the javascript-host's boot hint names, read through `boot.read` once the
+ * runtime the hint also names is open.
+ */
+export function hintedForebayLibrary(runtime: Pick<Runtime, "boot">, layer: CachedLayer): { version: string; source: ForebayLibrarySource } {
+  const version = runtime.boot.read({ cache: layer.cache, hostId: LAYER_ID }).hint?.libraries[FOREBAY_LIBRARY_ID];
+  if (version === undefined) throw new HostRefusal(`no ${FOREBAY_LIBRARY_ID} library is hinted for the ${LAYER_ID} in ${layer.cache}`, REINSTALL_FIX);
+  return { version, source: cachedForebayLibrary(layer.cache, version) };
 }

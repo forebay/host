@@ -4,6 +4,7 @@ import type { Runtime } from "../runtime/open.js";
 import type { ActivityPublisher } from "./activity.js";
 import type { HostPlaces } from "./places.js";
 import { scopeOf } from "./scope.js";
+import type { PluginScope } from "./scope.js";
 
 type Level = "debug" | "info" | "warn" | "error";
 
@@ -15,18 +16,12 @@ function printToStderr(line: string | undefined): void {
   if (line !== undefined) process.stderr.write(`${line}\n`);
 }
 
-export function buildLogger(
-  runtime: Runtime,
-  places: HostPlaces,
-  host: HostIdentity,
-  manifest: PluginManifest,
-  startedAt: string,
-  publish: ActivityPublisher,
-): Logger {
+/** A logger writing through `log.write` under `scope`, for a plugin or for a part of the host itself. */
+export function scopedLogger(runtime: Pick<Runtime, "log">, scope: () => PluginScope, startedAt: string, publish: ActivityPublisher): Logger {
   function write(level: Level, message: string): void {
     try {
       const { console: line } = runtime.log.write({
-        ...scopeOf(host, places, manifest),
+        ...scope(),
         start: startedAt,
         time: new Date().toISOString(),
         level,
@@ -53,4 +48,15 @@ export function buildLogger(
     warn: (message) => write("warn", message),
     error,
   };
+}
+
+export function buildLogger(
+  runtime: Runtime,
+  places: HostPlaces,
+  host: HostIdentity,
+  manifest: PluginManifest,
+  startedAt: string,
+  publish: ActivityPublisher,
+): Logger {
+  return scopedLogger(runtime, () => scopeOf(host, places, manifest), startedAt, publish);
 }

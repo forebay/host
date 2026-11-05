@@ -133,6 +133,8 @@ export interface ProcessesService {
   hold(argument: { state: string; hostId: string; holder: number; start: { executable: string; arguments?: string[]; environment?: { [key: string]: string }; directory?: string; [key: string]: unknown }; [key: string]: unknown }): { pid: number; started: boolean; outsideJob?: boolean };
   release(argument: { state: string; hostId: string; holder: number; [key: string]: unknown }): { holders: number[] };
   prune(argument: { state: string; hostId: string; self: number; now?: number; checkMilliseconds?: number; [key: string]: unknown }): { exit: boolean };
+  ready(argument: { state: string; hostId: string; pid: number; environment?: { [key: string]: string }; refused?: string; fix?: string; [key: string]: unknown }): { [key: string]: never };
+  awaitReady(argument: { state: string; hostId: string; pid: number; timeoutMilliseconds: number; [key: string]: unknown }): { environment: { [key: string]: string } };
   recordRun(argument: { state: string; hostId: string; run: { [key: string]: string }; checkMilliseconds?: number; record?: string; [key: string]: unknown }): { record: string };
   liveRuns(argument: { state: string; now?: number; [key: string]: unknown }): { runs: { [key: string]: string }[] };
   removeRuns(argument: { state: string; hostId: string; record?: string; [key: string]: unknown }): { [key: string]: never };

@@ -1,0 +1,17 @@
+{
+  "id": "provider-a",
+  "api": 1,
+  "version": "1.0.0",
+  "entry": "index.js",
+  "capabilities": ["provider"],
+  "services": {
+    "provides": ["provider-a:accounts"],
+    "consumes": ["accounts"]
+  },
+  "actions": {
+    "login": {
+      "label": "Log in",
+      "call": { "service": "provider-a:accounts", "method": "login", "argument": { "label": "default" } }
+    }
+  }
+}

@@ -5,6 +5,7 @@ import type { LibraryDeclaration, LoadedLibrary } from "@weivel/typescript/host"
 import { useKoffiFrom } from "./cached-koffi.js";
 import { runtimeBinaryName } from "./cached-runtime.js";
 import type {
+  BootService,
   CacheService,
   ConfigService,
   LoaderService,
@@ -36,7 +37,8 @@ export interface Runtime {
   registry: Pick<RegistryService, "get">;
   cache: Pick<CacheService, "locate">;
   updates: Pick<UpdatesService, "apply" | "check">;
-  processes: Pick<ProcessesService, "prune" | "recordRun" | "removeRuns">;
+  processes: Pick<ProcessesService, "prune" | "recordRun" | "removeRuns" | "ready">;
+  boot: Pick<BootService, "read">;
   loader: Pick<LoaderService, "check">;
   ui: Pick<UiService, "navigation" | "plan" | "render">;
   close(): void;
@@ -78,6 +80,7 @@ export function openRuntime(source: RuntimeSource): Runtime {
     cache: service<CacheService>("cache"),
     updates: service<UpdatesService>("updates"),
     processes: service<ProcessesService>("processes"),
+    boot: service<BootService>("boot"),
     loader: service<LoaderService>("loader"),
     ui: service<UiService>("ui"),
     close: () => library.close(),

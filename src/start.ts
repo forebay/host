@@ -4,6 +4,7 @@ import type { LoadedHost, PluginHostOptions } from "@weivel/typescript/host";
 import type { PluginManifest } from "@weivel/typescript";
 import type { RuntimeEvents } from "@weivel/typescript/engine";
 import { buildRuntime } from "./context/build.js";
+import type { HostService } from "./forebay-library/open.js";
 import type { HostPlaces } from "./context/places.js";
 import { reconcileSecretsInBackground } from "./context/reconcile.js";
 import type { ReconcileAnswer } from "./context/reconcile.js";
@@ -31,6 +32,8 @@ export interface HostOptions {
   defaults?: Record<string, string>;
   environment?: Record<string, string>;
   surfaces?: string[];
+  /** Services the host offers every plugin beside what plugins register, such as `forebay/library`'s. */
+  services?: HostService[];
 }
 
 export interface RunningHost {
@@ -78,6 +81,7 @@ function pluginHostOptions(runtime: Runtime, places: HostPlaces, options: HostOp
     pluginDir: join(places.cache, "bundles"),
     surfaces: options.surfaces,
     wellKnownServices: wellKnownServices.map((id) => ({ id })),
+    services: options.services,
     scan: scanOf(options.bundles.list(), wellKnownServices),
     runtimeFor: (manifest: PluginManifest) => buildRuntime(runtime, places, options.identity, manifest, bus, startedAt),
     libraryCache: join(places.cache, "libraries"),

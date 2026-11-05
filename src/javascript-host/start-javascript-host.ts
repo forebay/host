@@ -1,4 +1,8 @@
+import { activityPublisher } from "../context/activity.js";
+import { scopedLogger } from "../context/log.js";
 import type { HostPlaces } from "../context/places.js";
+import { forebayLibraryServices, openForebayLibrary } from "../forebay-library/open.js";
+import type { ForebayLibrary } from "../forebay-library/open.js";
 import { hostSettings } from "../host-settings.js";
 import type { HostIdentity } from "../identity.js";
 import { cacheBundles } from "../plugins/cache-bundles.js";
@@ -8,10 +12,13 @@ import type { Runtime } from "../runtime/open.js";
 import type { UpdatesService } from "../runtime/types.js";
 import { startHost } from "../start.js";
 import type { RunningHost } from "../start.js";
+import { readyPublisher } from "../proxy/publish.js";
+import { serveProxy } from "../proxy/serve.js";
+import type { ProxyServer } from "../proxy/serve.js";
 import { navigationOf, renderScreen } from "../ui/screen.js";
 import type { HeadlessScreen, Navigation, ScreenRequest } from "../ui/screen.js";
 import { userHomeOf } from "../user-home.js";
-import { cachedLayerOf, LAYER_ID } from "./cached-layer.js";
+import { cachedLayerOf, hintedForebayLibrary, LAYER_ID } from "./cached-layer.js";
 import type { CachedLayer } from "./cached-layer.js";
 import { startProcessTimer } from "./process-timer.js";
 import type { ProcessTimer } from "./process-timer.js";
@@ -29,6 +36,11 @@ export interface JavascriptHostOptions {
   environment: Record<string, string>;
   /** Whether holders keep this host alive, as for a background host a launcher holds. */
   held: boolean;
+  /**
+   * Whether this start is the application's session host, which serves an enabled front door and
+   * publishes its ready record; a start that runs one action is not.
+   */
+  session: boolean;
   /** Called once when no holder is left, after the host has stopped: with 0, or 1 when the stop failed. */
   onUnheld?(exitCode: number): void;
   writeError(text: string): void;
@@ -46,6 +58,8 @@ export interface JavascriptHost {
 interface Started {
   layer: CachedLayer;
   runtime: Runtime;
+  library: ForebayLibrary;
+  userHome: string;
   places: HostPlaces;
   identity: HostIdentity;
   settings: Record<string, unknown>;
@@ -53,8 +67,8 @@ interface Started {
   bundles: CacheBundles;
 }
 
-function applied(runtime: Runtime, places: HostPlaces, layer: CachedLayer, identity: HostIdentity, settings: Record<string, unknown>): Applied {
-  const running = { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi };
+function applied(runtime: Runtime, places: HostPlaces, layer: CachedLayer, identity: HostIdentity, settings: Record<string, unknown>, libraryVersion: string): Applied {
+  const running = { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi, apps: libraryVersion };
   return runtime.updates.apply({ places: { state: places.state, cache: places.cache }, hostId: identity.id, settings, running });
 }
 
@@ -62,18 +76,29 @@ function reportUnrecorded(hostId: string, unrecorded: Applied["unrecorded"], wri
   for (const { message, fix } of unrecorded) writeError(`spisor could not record part of the start of ${hostId}: ${message}\nfix: ${fix}\n`);
 }
 
-/** Resolves the registration and what `updates.apply` runs, closing the runtime again when either is refused. */
+/** Opens the `apps` library the boot hint names, its `apps` functions answering from the host's environment and the user's home. */
+function openedLibrary(runtime: Runtime, layer: CachedLayer, options: JavascriptHostOptions, userHome: string): { library: ForebayLibrary; version: string } {
+  const { version, source } = hintedForebayLibrary(runtime, layer);
+  return { version, library: openForebayLibrary(source, () => ({ environment: options.environment, home: userHome, arguments: [] })) };
+}
+
+/** Resolves the registration and what `updates.apply` runs, closing the libraries again when either is refused. */
 function prepared(options: JavascriptHostOptions): Started {
   const layer = cachedLayerOf(options.bundleFile);
   const runtime = openRuntime(layer.source);
+  let library: ForebayLibrary | undefined;
   try {
-    const places = runtime.places.resolve({ home: userHomeOf(options.environment), environment: options.environment });
+    const userHome = userHomeOf(options.environment);
+    const opened = openedLibrary(runtime, layer, options, userHome);
+    library = opened.library;
+    const places = runtime.places.resolve({ home: userHome, environment: options.environment });
     const identity = registeredIdentity(runtime, places, options.hostId);
     const settings = hostSettings(runtime, places, identity.home).all();
-    const answer = applied(runtime, places, layer, identity, settings);
+    const answer = applied(runtime, places, layer, identity, settings, opened.version);
     reportUnrecorded(identity.id, answer.unrecorded, options.writeError);
-    return { layer, runtime, places, identity, settings, applied: answer, bundles: cacheBundles(runtime, places.cache, answer.plugins) };
+    return { layer, runtime, library, userHome, places, identity, settings, applied: answer, bundles: cacheBundles(runtime, places.cache, answer.plugins) };
   } catch (error) {
+    library?.close();
     runtime.close();
     throw error;
   }
@@ -109,25 +134,44 @@ async function stopTimers(timers: Timers): Promise<void> {
   await timers.updates.stop();
 }
 
-/** Removes this start's run record and closes the runtime, closing it even when the removal throws. */
+/** Removes this start's run record and closes both libraries, closing them even when the removal throws. */
 function release(started: Started): void {
   try {
     started.runtime.processes.removeRuns({ state: started.places.state, hostId: started.identity.id, record: started.applied.runRecord });
   } finally {
+    started.library.close();
     started.runtime.close();
   }
 }
 
-function stopper(started: Started, running: RunningHost, timers: Timers): () => Promise<void> {
+/** @implNote The proxy stops first, so no request reaches a plugin that is already deactivating. */
+function stopper(started: Started, running: RunningHost, timers: Timers, proxy: ProxyServer): () => Promise<void> {
   let stopping: Promise<void> | null = null;
   const stopOnce = async () => {
     try {
+      await proxy.stop();
       await Promise.all([stopTimers(timers), running.stop()]);
     } finally {
       release(started);
     }
   };
   return () => (stopping ??= stopOnce());
+}
+
+function proxyOf(started: Started, running: RunningHost, options: JavascriptHostOptions): Promise<ProxyServer> {
+  if (!options.session) return Promise.resolve({ stop: async () => undefined });
+  const { runtime, places, identity } = started;
+  const scope = () => ({ home: identity.home, portable: places.portable, plugin: "proxy", config: {} });
+  return serveProxy({
+    hostId: identity.id,
+    loaded: running.loaded,
+    settings: started.settings,
+    library: started.library,
+    publisher: readyPublisher(runtime, places.state, identity.id),
+    environment: options.environment,
+    userHome: started.userHome,
+    log: scopedLogger(runtime, scope, new Date().toISOString(), activityPublisher(running.events, "proxy")),
+  });
 }
 
 function messageOf(error: unknown): string {
@@ -160,7 +204,13 @@ export async function startJavascriptHost(options: JavascriptHostOptions): Promi
   const timers = timersOf(started, options, onUnheld);
   let running: RunningHost;
   try {
-    running = await startHost({ identity: { ...started.identity, version: started.applied.run[started.identity.id] ?? started.identity.version }, runtime: started.layer.source, bundles: started.bundles, environment: options.environment });
+    running = await startHost({
+      identity: { ...started.identity, version: started.applied.run[started.identity.id] ?? started.identity.version },
+      runtime: started.layer.source,
+      bundles: started.bundles,
+      environment: options.environment,
+      services: forebayLibraryServices(started.library),
+    });
   } catch (error) {
     try {
       await stopTimers(timers);
@@ -169,7 +219,8 @@ export async function startJavascriptHost(options: JavascriptHostOptions): Promi
     }
     throw error;
   }
-  host = { running, navigation: () => navigationOf(running), render: (screen) => renderScreen(running, screen), updates: timers.updates, stop: stopper(started, running, timers) };
+  const proxy = await proxyOf(started, running, options);
+  host = { running, navigation: () => navigationOf(running), render: (screen) => renderScreen(running, screen), updates: timers.updates, stop: stopper(started, running, timers, proxy) };
   if (unheld) onUnheld();
   return host;
 }
