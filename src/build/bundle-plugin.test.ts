@@ -37,33 +37,25 @@ afterEach(async () => {
 });
 
 describe("bundlePlugin", () => {
-  it("writes one file importing only node builtins, a module marker beside a .js entry, and a copy of plugin.json", async () => {
+  it("writes one file importing only node builtins and a copy of plugin.json, and no module marker", async () => {
     const repository = pluginRepository(join(base, "repository"), "greeter");
     const out = join(base, "out");
     const bundled = await bundlePluginWith(repository, out, ONLY_KOFFI);
     expect(bundled.output).toEqual({
       id: "greeter",
       version: "1.0.0",
-      files: { "index.js": join(out, "index.js"), "package.json": join(out, "package.json"), "plugin.json": join(out, "plugin.json") },
+      files: { "index.js": join(out, "index.js"), "plugin.json": join(out, "plugin.json") },
     });
-    expect(readdirSync(out).sort()).toEqual(["index.js", "package.json", "plugin.json"]);
-    expect(JSON.parse(readFileSync(join(out, "package.json"), "utf8"))).toEqual({ type: "module" });
+    expect(readdirSync(out).sort()).toEqual(["index.js", "plugin.json"]);
     expect(bundled.imports.length).toBeGreaterThan(0);
     expect(nonBuiltins(bundled.imports)).toEqual([]);
     expect(JSON.parse(readFileSync(join(out, "plugin.json"), "utf8"))).toEqual({ ...JSON.parse(readFileSync(join(repository, "plugin.json"), "utf8")), runtime: "javascript" });
   });
 
-  it("writes no module marker beside an .mjs entry", async () => {
+  it("writes the entry where the manifest names it, in a subdirectory too", async () => {
     const out = join(base, "out");
-    const output = await bundlePlugin(pluginRepository(join(base, "repository"), "greeter", { manifest: { entry: "index.mjs" } }), out);
-    expect(Object.keys(output.files).sort()).toEqual(["index.mjs", "plugin.json"]);
-    expect(readdirSync(out).sort()).toEqual(["index.mjs", "plugin.json"]);
-  });
-
-  it("puts the module marker beside an entry in a subdirectory", async () => {
-    const out = join(base, "out");
-    const output = await bundlePlugin(pluginRepository(join(base, "repository"), "greeter", { manifest: { entry: "dist/index.js" } }), out);
-    expect(Object.keys(output.files).sort()).toEqual(["dist/index.js", "dist/package.json", "plugin.json"]);
+    const output = await bundlePlugin(pluginRepository(join(base, "repository"), "greeter", { manifest: { entry: "dist/index.mjs" } }), out);
+    expect(Object.keys(output.files).sort()).toEqual(["dist/index.mjs", "plugin.json"]);
   });
 
   it("leaves koffi to be resolved where the bundle runs and inlines everything else", async () => {
@@ -141,12 +133,6 @@ describe("bundlePlugin", () => {
     const repository = pluginRepository(join(base, "repository"), "greeter", { manifest: { entry: "../escaped.mjs" } });
     const refusal = await refusalOf(bundlePlugin(repository, join(base, "out")));
     expect(refusal.detail).toContain("../escaped.mjs");
-  });
-
-  it.each(["plugin.json", "Package.json", "dist/package.json"])("refuses the entry %s, which the bundle's own files would replace", async (entry) => {
-    const repository = pluginRepository(join(base, "repository"), "greeter", { manifest: { entry } });
-    const refusal = await refusalOf(bundlePlugin(repository, join(base, "out")));
-    expect(refusal.detail).toContain(entry);
   });
 
   it("refuses a repository with no source entry", async () => {

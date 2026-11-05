@@ -9,8 +9,8 @@ the catalog, the cache, updates, installs, holders and the screens' logic, is a 
   check each answer there before `ui.render` draws the screen;
 - the `javascript-host` bundle (`bundleJavascriptHost`), which a launcher starts as
   `<runtime executable> host.js <host id>` and OpenCode's entry imports for `runSessionHost`: it starts
-  the plugins `updates.apply` answers for one registered host, runs `updates.check` on its interval and
-  `processes.prune` every 5 seconds;
+  the plugins `updates.apply` answers for one registered host, asks `updates.check` every hour, which
+  decides whether a check is due, and calls `processes.prune` every 5 seconds;
 - the bundlers `bundlePlugin`, `bundleLoader` and `bundleKoffiLibrary`, whose output
   `forebay-host catalog build` reads.
 
@@ -26,6 +26,5 @@ A failure answer from the library throws, as the weivel host's `call` does.
 
 `siblings/` holds the pinned `weivel/model`, `weivel/typescript` and `spisor/library` checkouts, as
 the CI workflow lays them out. Build the library in Release, build `siblings/typescript`, then run
-`npm test`. `src/runtime/types.ts` is generated from the declaration of the services the layer calls;
-`npm run generate:runtime-types` regenerates it once the weivel generator reads every schema form
-`runtime/library.json` uses.
+`npm test`. `src/runtime/types.ts` is generated from the whole of `runtime/library.json`; regenerate
+it with `npm run generate:runtime-types` after moving the library pin.

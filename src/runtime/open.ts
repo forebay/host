@@ -34,7 +34,7 @@ export interface Runtime {
   log: LogService;
   secrets: Pick<SecretsService, "get" | "set" | "delete" | "reconcile">;
   registry: Pick<RegistryService, "get">;
-  cache: Pick<CacheService, "check">;
+  cache: Pick<CacheService, "locate">;
   updates: Pick<UpdatesService, "apply" | "check">;
   processes: Pick<ProcessesService, "prune" | "recordRun" | "removeRuns">;
   loader: Pick<LoaderService, "check">;
