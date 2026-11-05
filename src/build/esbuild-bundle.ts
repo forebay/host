@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { dirname, join } from "node:path";
 import { BuildRefusal } from "./build-refusal.js";
-import { MODULE_MARKER_CONTENT, moduleMarkerKey } from "../cache/module-marker.js";
+import { MODULE_MARKER_CONTENT, moduleMarkerKey } from "./module-marker.js";
 
 /**
  * Gives inlined CommonJS a working `require`, which esbuild's ESM output otherwise replaces with a

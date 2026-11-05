@@ -18,7 +18,7 @@ export function runtimeBinaryName(platformKey: string): string {
 }
 
 /** Where library `id` at `version` is installed for `platformKey`. */
-export function libraryDirectory(cache: string, id: string, version: string, platformKey: string): string {
+function libraryDirectory(cache: string, id: string, version: string, platformKey: string): string {
   return join(cache, "libraries", id, version, platformKey);
 }
 

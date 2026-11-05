@@ -1,4 +1,4 @@
-import type { ReconcileAnswer } from "./context/reconcile-worker.js";
+import type { ReconcileAnswer } from "./context/reconcile.js";
 
 export interface ReconcileTracker {
   outcome(): ReconcileAnswer | null;

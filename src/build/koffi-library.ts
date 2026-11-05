@@ -1,10 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { KOFFI_ID } from "../install/host-libraries.js";
 import { BuildRefusal } from "./build-refusal.js";
-import { libraryDirectoryOutput } from "./built-directory.js";
+import { parsedManifest, versionOf } from "./bundle-manifest.js";
 import type { BundleOutput } from "./bundle-plugin.js";
 
+const KOFFI_ID = "koffi";
 const NATIVE_MODULE = "koffi.node";
 const PACKAGE_FILES = ["index.js", "package.json", "LICENSE.txt"];
 
@@ -25,10 +25,11 @@ function nativeModules(platformKey: string): string[] {
   return nativeFolders(platformKey).map((folder) => `build/koffi/${folder}/${NATIVE_MODULE}`);
 }
 
-function copyInto(packageDirectory: string, outDirectory: string, key: string): void {
+function copyInto(packageDirectory: string, outDirectory: string, key: string): string {
   const destination = join(outDirectory, ...key.split("/"));
   mkdirSync(dirname(destination), { recursive: true });
   copyFileSync(join(packageDirectory, ...key.split("/")), destination);
+  return destination;
 }
 
 function present(packageDirectory: string, keys: string[]): string[] {
@@ -36,17 +37,18 @@ function present(packageDirectory: string, keys: string[]): string[] {
 }
 
 /**
- * Lays out the installed `koffi` package at `packageDirectory` as the catalog library `koffi` for
- * one platform: its self-contained `index.js`, its `package.json` and the native module koffi
- * requires beside them, so it loads by path from any directory.
- *
- * @remarks `outDirectory` must be empty or absent, since every file in it is listed.
+ * Lays out the installed `koffi` package at `packageDirectory` as the library `koffi` for one
+ * platform, the directory `forebay-host catalog build --library koffi=<directory>@<platform>`
+ * reads: its self-contained `index.js`, its `package.json` and the native module koffi requires
+ * beside them, so it loads by path from any directory.
  */
-export function koffiLibraryOutput(packageDirectory: string, platformKey: string, outDirectory: string): BundleOutput {
+export function bundleKoffiLibrary(packageDirectory: string, platformKey: string, outDirectory: string): BundleOutput {
   const natives = present(packageDirectory, nativeModules(platformKey));
   if (natives.length === 0) {
     throw new BuildRefusal(`${packageDirectory} carries no koffi native module for ${platformKey}`, "install a koffi release that ships a prebuilt module for this platform");
   }
-  for (const key of [...present(packageDirectory, PACKAGE_FILES), ...natives]) copyInto(packageDirectory, outDirectory, key);
-  return libraryDirectoryOutput(KOFFI_ID, outDirectory);
+  const keys = [...present(packageDirectory, PACKAGE_FILES), ...natives];
+  const files = Object.fromEntries(keys.map((key) => [key, copyInto(packageDirectory, outDirectory, key)]));
+  const manifest = join(packageDirectory, "package.json");
+  return { id: KOFFI_ID, version: versionOf(parsedManifest(manifest), manifest), files };
 }

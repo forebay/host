@@ -11,14 +11,6 @@ export function startGreeterHost(base: string, bundles: BundleSource): Promise<R
     identity: { id: "test-host", version: "1.0.0", home: join(base, "home"), requiresCommand: false, commands: [] },
     runtime: siblingRuntime(REPOSITORY_ROOT),
     bundles,
-    provenance: {
-      method: "test",
-      version: "1.0.0",
-      location: join(base, "installed"),
-      os: process.platform,
-      architecture: process.arch,
-      installedAt: "2026-11-03T00:00:00.000Z",
-    },
     defaults: { "demo:greeting": "greeter" },
     consumes: ["demo:greeting"],
     environment: {

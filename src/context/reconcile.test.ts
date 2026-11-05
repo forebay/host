@@ -8,7 +8,7 @@ import type { Fixture } from "../__fixtures__/context.js";
 import { runReconcileWorker } from "./reconcile.js";
 
 let fixture: Fixture;
-const compiledWorker = pathToFileURL(join(REPOSITORY_ROOT, "dist", "context", "reconcile-worker.js"));
+const compiledWorker = pathToFileURL(join(REPOSITORY_ROOT, "dist", "context", "runtime-worker.js"));
 
 function writeBlockingWorker(directory: string): URL {
   const file = join(directory, "blocking-worker.mjs");

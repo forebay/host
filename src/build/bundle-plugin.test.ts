@@ -50,7 +50,7 @@ describe("bundlePlugin", () => {
     expect(JSON.parse(readFileSync(join(out, "package.json"), "utf8"))).toEqual({ type: "module" });
     expect(bundled.imports.length).toBeGreaterThan(0);
     expect(nonBuiltins(bundled.imports)).toEqual([]);
-    expect(readFileSync(join(out, "plugin.json"), "utf8")).toBe(readFileSync(join(repository, "plugin.json"), "utf8"));
+    expect(JSON.parse(readFileSync(join(out, "plugin.json"), "utf8"))).toEqual({ ...JSON.parse(readFileSync(join(repository, "plugin.json"), "utf8")), runtime: "javascript" });
   });
 
   it("writes no module marker beside an .mjs entry", async () => {
@@ -135,13 +135,6 @@ describe("bundlePlugin", () => {
     const refusal = await refusalOf(bundlePlugin(repository, join(base, "out")));
     expect(refusal.detail).toContain("no version");
     expect(refusal.fix).toContain('"version"');
-  });
-
-  it("refuses a version the catalog's version pattern refuses", async () => {
-    const repository = pluginRepository(join(base, "repository"), "greeter", { manifest: { version: "1.0.0-beta." } });
-    const refusal = await refusalOf(bundlePlugin(repository, join(base, "out")));
-    expect(refusal.detail).toContain("1.0.0-beta.");
-    expect(refusal.fix).toContain("trailing dot");
   });
 
   it("refuses an entry that would be written outside the output directory", async () => {

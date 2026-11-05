@@ -29,7 +29,7 @@ describe("statusOf", () => {
       [pluginError("owner/repo@v1.0.0", "the release has no asset for this platform", "publish one")],
       [row("a", "active")],
     );
-    const status = statusOf("test-host", loaded, [], null);
+    const status = statusOf("test-host", loaded, null);
     expect(status.active).toEqual(["a"]);
     expect(status.quarantined).toEqual([]);
     expect(status.libraries).toEqual([{ id: "owner/repo@v1.0.0", detail: "the release has no asset for this platform", fix: "publish one" }]);
@@ -38,7 +38,7 @@ describe("statusOf", () => {
   it("reports a plugin quarantined after it started as quarantined and not active", () => {
     const broken = { detail: "it threw while serving", fix: "fix the plugin" };
     const loaded = loadedWith(["a", "b"], [], [row("a", "active"), row("b", "broken", broken)]);
-    const status = statusOf("test-host", loaded, [], null);
+    const status = statusOf("test-host", loaded, null);
     expect(status.active).toEqual(["a"]);
     expect(status.quarantined).toEqual([{ id: "b", ...broken }]);
   });

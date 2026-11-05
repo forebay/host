@@ -1,8 +1,0 @@
-{
-  "id": "twin-install-method",
-  "api": 1,
-  "version": "1.0.0",
-  "entry": "index.js",
-  "installMethod": "fake",
-  "services": { "provides": ["twin-install-method:install-method"] }
-}

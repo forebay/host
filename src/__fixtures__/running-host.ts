@@ -7,12 +7,11 @@ import { compileFixtureBundles } from "./bundles.js";
 import { REPOSITORY_ROOT } from "./context.js";
 import type { HostIdentity } from "../identity.js";
 import { directoryBundles } from "../plugins/bundle-source.js";
-import { openRuntime, siblingRuntime } from "../runtime/open.js";
+import { siblingRuntime } from "../runtime/open.js";
 import { startHostWith } from "../start.js";
 import type { RunningHost } from "../start.js";
 
 const SOURCE = siblingRuntime(REPOSITORY_ROOT);
-const FIXTURE_IDS = ["a", "viewer", "dormant", "greeter", "rival", "silent", "fake-install-method", "broken-install-method", "twin-install-method", "aaa-failing-install-method"];
 
 /** How many turns of the event loop to wait for a call to schedule its deadline before firing regardless. */
 const SCHEDULE_POLL_TURNS = 100;
@@ -57,37 +56,16 @@ function environmentUnder(base: string): Record<string, string> {
   };
 }
 
-function enable(identity: HostIdentity, environment: Record<string, string>, ids: readonly string[]): void {
-  const runtime = openRuntime(SOURCE);
-  try {
-    const places = runtime.places.resolve({ home: environment.HOME, environment });
-    for (const id of ids) {
-      runtime.settings.set({ home: identity.home, portable: places.portable, key: `plugins.${id}.enabled`, value: true, layer: "portable" });
-    }
-  } finally {
-    runtime.close();
-  }
-}
-
-/** Starts a host over the compiled fixture plugins with only `enabled` switched on. */
+/** Starts a host over the compiled fixture plugins `enabled`, every one of which it starts. */
 export async function startFixtureHost(enabled: readonly string[], scheduler?: Scheduler): Promise<FixtureHost> {
   const base = mkdtempSync(join(tmpdir(), "host-ui-"));
   const environment = environmentUnder(base);
   const identity: HostIdentity = { id: "test-host", version: "1.0.0", home: join(base, "home"), requiresCommand: false, commands: [] };
-  enable(identity, environment, enabled);
   const running = await startHostWith(
     {
       identity,
       runtime: SOURCE,
-      bundles: directoryBundles(compileFixtureBundles(join(base, "bundles"), FIXTURE_IDS)),
-      provenance: {
-        method: "test",
-        version: "1.0.0",
-        location: join(base, "installed"),
-        os: process.platform,
-        architecture: process.arch,
-        installedAt: "2026-11-02T00:00:00.000Z",
-      },
+      bundles: directoryBundles(compileFixtureBundles(join(base, "bundles"), enabled)),
       consumes: ["demo:greeting"],
       environment,
     },

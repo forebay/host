@@ -7,7 +7,7 @@ export type BindingTarget =
   | { state: "unavailable"; error: PluginError }
   | { state: "refused"; error: PluginError };
 
-export function providesService(manifest: PluginManifest, service: string): boolean {
+function providesService(manifest: PluginManifest, service: string): boolean {
   return (manifest.services?.provides ?? []).some((offer) => (typeof offer === "string" ? offer : offer.id) === service);
 }
 

@@ -5,16 +5,18 @@ import type { LibraryDeclaration, LoadedLibrary } from "@weivel/typescript/host"
 import { useKoffiFrom } from "./cached-koffi.js";
 import { runtimeBinaryName } from "./cached-runtime.js";
 import type {
-  ChangesService,
-  CommandsService,
+  CacheService,
   ConfigService,
-  InstallService,
+  LoaderService,
   LogService,
   PathsService,
   PlacesService,
+  ProcessesService,
   RegistryService,
   SecretsService,
   SettingsService,
+  UiService,
+  UpdatesService,
 } from "./types.js";
 
 export interface RuntimeSource {
@@ -31,10 +33,12 @@ export interface Runtime {
   settings: SettingsService;
   log: LogService;
   secrets: Pick<SecretsService, "get" | "set" | "delete" | "reconcile">;
-  registry: RegistryService;
-  changes: Pick<ChangesService, "apply" | "reverse">;
-  commands: CommandsService;
-  install: Pick<InstallService, "packages" | "plan">;
+  registry: Pick<RegistryService, "get">;
+  cache: Pick<CacheService, "check">;
+  updates: Pick<UpdatesService, "apply" | "check">;
+  processes: Pick<ProcessesService, "prune" | "recordRun" | "removeRuns">;
+  loader: Pick<LoaderService, "check">;
+  ui: Pick<UiService, "navigation" | "plan" | "render">;
   close(): void;
 }
 
@@ -71,9 +75,11 @@ export function openRuntime(source: RuntimeSource): Runtime {
     log: service<LogService>("log"),
     secrets: service<SecretsService>("secrets"),
     registry: service<RegistryService>("registry"),
-    changes: service<ChangesService>("changes"),
-    commands: service<CommandsService>("commands"),
-    install: service<InstallService>("install"),
+    cache: service<CacheService>("cache"),
+    updates: service<UpdatesService>("updates"),
+    processes: service<ProcessesService>("processes"),
+    loader: service<LoaderService>("loader"),
+    ui: service<UiService>("ui"),
     close: () => library.close(),
   };
 }
