@@ -30,8 +30,28 @@ async function pulled(iterator: AsyncIterator<IrStreamEvent>, checks: ContractCh
   return next.done === true ? undefined : checks.check<IrStreamEvent>("IrStreamEvent", next.value, "a streamed event");
 }
 
+/** Settles when the response can take more, or when the client has gone and it never will. */
+function drainedOrAborted({ response, signal }: StreamRelay): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const settle = (): void => {
+      response.off("drain", settle);
+      signal.removeEventListener("abort", settle);
+      resolve();
+    };
+    response.once("drain", settle);
+    signal.addEventListener("abort", settle, { once: true });
+  });
+}
+
+async function writtenChunks(relay: StreamRelay, chunks: string[]): Promise<void> {
+  for (const chunk of chunks) {
+    if (!relay.response.write(chunk)) await drainedOrAborted(relay);
+  }
+}
+
 async function written(relay: StreamRelay, event: IrStreamEvent): Promise<void> {
-  for (const chunk of await relay.frontDoor.encodeEvent(event)) relay.response.write(chunk);
+  await writtenChunks(relay, await relay.frontDoor.encodeEvent(event));
 }
 
 /** @implNote The error event's own encoding may fail too; the stream is ended either way, never left open. */
@@ -52,7 +72,7 @@ async function firstEvent(iterator: AsyncIterator<IrStreamEvent>, checks: Contra
 }
 
 async function relayRest(iterator: AsyncIterator<IrStreamEvent>, relay: StreamRelay): Promise<RelayOutcome> {
-  for (;;) {
+  while (!relay.signal.aborted) {
     let event: IrStreamEvent | undefined;
     try {
       event = await pulled(iterator, relay.checks);
@@ -92,6 +112,6 @@ export async function relayStream(events: AsyncIterable<IrStreamEvent>, relay: S
     return { kind: "aborted" };
   }
   relay.response.writeHead(200, STREAM_HEADERS);
-  for (const chunk of chunks) relay.response.write(chunk);
+  await writtenChunks(relay, chunks);
   return relayRest(iterator, relay);
 }
