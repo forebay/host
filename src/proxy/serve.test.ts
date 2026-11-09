@@ -431,6 +431,7 @@ describe("the session host with no provider enabled", () => {
       const record = readyRecord(world);
       expect(record?.environment).toBeUndefined();
       expect(String(record?.refused)).toContain("declares no proxy");
+      expect(String(record?.fix)).toMatch(/^run forebay-host install/);
       expect(String(record?.fix)).toContain("application.proxy");
     } finally {
       declareApplication(world, APPLICATION_PROXY);
