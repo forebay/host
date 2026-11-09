@@ -8,10 +8,30 @@ export interface BufferedRequest {
   body: Buffer;
 }
 
-export function bufferedRequest(request: IncomingMessage): Promise<BufferedRequest> {
+export class RequestTooLarge extends Error {
+  constructor(maxBytes: number) {
+    super(`the request body is larger than the ${maxBytes} bytes the proxy accepts`);
+  }
+}
+
+/** The whole body of a request, refused with `RequestTooLarge` as soon as it is known to pass `maxBytes`. */
+export function bufferedRequest(request: IncomingMessage, maxBytes: number): Promise<BufferedRequest> {
   return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    if (Number(request.headers["content-length"] ?? 0) > maxBytes) {
+      reject(new RequestTooLarge(maxBytes));
+      return;
+    }
+    let chunks: Buffer[] = [];
+    let received = 0;
+    const keep = (chunk: Buffer): void => {
+      received += chunk.length;
+      chunks.push(chunk);
+      if (received <= maxBytes) return;
+      chunks = [];
+      request.off("data", keep);
+      reject(new RequestTooLarge(maxBytes));
+    };
+    request.on("data", keep);
     request.on("error", reject);
     request.on("end", () => resolve({ method: request.method ?? "GET", url: request.url ?? "/", headers: request.headers, body: Buffer.concat(chunks) }));
   });

@@ -53,6 +53,7 @@ export interface RoutingService {
   modelMap(argument: { profile: Profile; stored: Record<string, unknown>; models: ModelsArgument }): { map?: ModelMap; healed?: string[] } & Refusable;
   resolve(argument: { profile: Profile; map: ModelMap; models: ModelsArgument; requestedModel: string }): { chain?: Assignment[]; notices?: RoutingNotice[] } & Refusable;
   outcome(argument: { status: number; headers: Record<string, string>; now: number }): { rateLimited: boolean; resetAt?: number };
+  limits(argument: Record<string, never>): { maxRequestBytes: number };
   environment(argument: { profile: Profile; map: ModelMap; port: number; providersEnabled: boolean; environment: Record<string, string>; userHome: string }): { environment: Record<string, string> };
 }
 
