@@ -15,6 +15,7 @@ import type { ProxyLog, ProxyState } from "./handle-request.js";
 import { PROVIDER_CAPABILITY, providerCalls } from "./providers.js";
 import type { ProviderCalls } from "./providers.js";
 import type { ReadyPublisher } from "./publish.js";
+import type { ApplicationProxy } from "../loader-standard.js";
 import { startRoutingModels } from "./routing-models.js";
 import type { RoutingModels } from "./routing-models.js";
 
@@ -35,6 +36,8 @@ export interface ProxySession {
   /** The environment the application would start with, and the user's home, which `routing.environment` reads. */
   environment: Record<string, string>;
   userHome: string;
+  /** What the application's loader standard declares about pointing it at a proxy, absent when it declares nothing. */
+  application: ApplicationProxy | undefined;
   log: ProxyLog;
 }
 
@@ -139,7 +142,13 @@ function stopperOf(server: Server, models: RoutingModels): () => Promise<void> {
     }));
 }
 
+function declaredProxy(session: ProxySession, frontDoorId: string): ApplicationProxy {
+  if (session.application !== undefined) return session.application;
+  throw new ProxyRefusal(`the front door ${frontDoorId} is enabled, but the application of ${session.hostId} declares no proxy`, `declare application.proxy in the loader standard of ${session.hostId}, or disable ${frontDoorId}`);
+}
+
 async function served(session: ProxySession, front: { pluginId: string; implementation: FrontDoor }): Promise<ProxyServer> {
+  const application = declaredProxy(session, front.pluginId);
   const checks = contractChecks(session.library.contractsDirectory);
   const frontDoor = frontDoorCalls(front.pluginId, front.implementation, checks, session.loaded.scheduler);
   const providers = providersOf(session, checks);
@@ -154,6 +163,7 @@ async function served(session: ProxySession, front: { pluginId: string; implemen
     providers,
     routing: session.library.routing,
     profile,
+    placeholderAuthorization: `Bearer ${application.placeholder.value}`,
     checks,
     snapshot: () => models.snapshot(),
     rederive: () => models.rederive(),
@@ -164,7 +174,7 @@ async function served(session: ProxySession, front: { pluginId: string; implemen
   const server = createServer((request, response) => void handleRequest(state, request, response));
   try {
     await listening(server, port, session);
-    const { environment } = session.library.routing.environment({ profile, map: models.snapshot().map, port, providersEnabled: providers.size > 0, environment: session.environment, userHome: session.userHome });
+    const { environment } = session.library.routing.environment({ profile, map: models.snapshot().map, port, providersEnabled: providers.size > 0, environment: session.environment, userHome: session.userHome, application });
     session.publisher.environment(environment);
   } catch (error) {
     models.stop();

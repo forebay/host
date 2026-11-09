@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { userPathEntriesUnder } from "../__fixtures__/user-path.js";
 import { runNode } from "../__fixtures__/javascript-host-world.js";
-import { FRONT_DOOR, hostSettingsFile, installedProxyWorld, providerEvents, PROVIDERS, readyRecord, SESSION_HOST, setHostSetting, startSession } from "../__fixtures__/proxy-world.js";
+import { APPLICATION_PROXY, declareApplication, FRONT_DOOR, hostSettingsFile, installedProxyWorld, providerEvents, PROVIDERS, readyRecord, SESSION_HOST, setHostSetting, startSession } from "../__fixtures__/proxy-world.js";
 import type { ProxyWorld, RunningSession } from "../__fixtures__/proxy-world.js";
 
 const MODEL_MAP = {
@@ -164,10 +164,10 @@ afterAll(async () => {
 });
 
 describe("the session host serving an enabled front door", () => {
-  it("publishes the environment routing.environment answers, its base url on the proxy port", () => {
+  it("publishes the base url under the variable the application declares, on the proxy port", () => {
     const record = readyRecord(world);
     expect(record).toMatchObject({ pid: session.process.pid });
-    expect((record?.environment as Record<string, string>).ANTHROPIC_BASE_URL).toBe(`http://127.0.0.1:${world.port}`);
+    expect((record?.environment as Record<string, string>).FIXTURE_BASE_URL).toBe(`http://127.0.0.1:${world.port}`);
   });
 
   it("answers ok on /health", async () => {
@@ -314,7 +314,7 @@ describe("the session host serving an enabled front door", () => {
 
   it("drops the placeholder authorization from what it forwards, so the placeholder never reaches an upstream", async () => {
     const before = upstream.received.length;
-    const response = await fetch(url("/v1/messages/count_tokens"), { method: "POST", headers: { authorization: "Bearer sk-ant-loader-proxy", "content-type": "application/json" }, body: "{}" });
+    const response = await fetch(url("/v1/messages/count_tokens"), { method: "POST", headers: { authorization: "Bearer fixture-placeholder", "content-type": "application/json" }, body: "{}" });
     expect(response.status).toBe(201);
     await response.text();
     const received = upstream.received.slice(before);
@@ -404,7 +404,7 @@ describe("the session host with no provider enabled", () => {
     expect(received[0]?.headers.authorization).toBe("Bearer user-own-token");
     expect(received[0]?.headers["x-extra"]).toBe("1");
     expect(received[0]?.body.equals(body)).toBe(true);
-    expect(readyRecord(world)?.environment).toEqual({ ANTHROPIC_BASE_URL: `http://127.0.0.1:${world.port}` });
+    expect(readyRecord(world)?.environment).toEqual({ FIXTURE_BASE_URL: `http://127.0.0.1:${world.port}` });
   });
 
   it("publishes a refusal naming the port and proxy.port when the port is already taken", async () => {
@@ -420,6 +420,20 @@ describe("the session host with no provider enabled", () => {
       expect(record?.fix).toBe(`stop what listens on port ${world.port}, or set proxy.port in ${hostSettingsFile(world)} to a free port`);
     } finally {
       await closed(squatter);
+    }
+  });
+
+  it("publishes a refusal when a front door is enabled and the application declares no proxy", async () => {
+    await session.stop();
+    declareApplication(world, undefined);
+    try {
+      session = await startServing();
+      const record = readyRecord(world);
+      expect(record?.environment).toBeUndefined();
+      expect(String(record?.refused)).toContain("declares no proxy");
+      expect(String(record?.fix)).toContain("application.proxy");
+    } finally {
+      declareApplication(world, APPLICATION_PROXY);
     }
   });
 

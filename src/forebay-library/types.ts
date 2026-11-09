@@ -1,5 +1,6 @@
 import type { AppDescriptor, ServiceType } from "@weivel/typescript";
 import type { Profile } from "../contracts/index.js";
+import type { ApplicationProxy } from "../loader-standard.js";
 
 /**
  * The services `forebay/library`'s `library.json` declares, written by hand.
@@ -54,7 +55,7 @@ export interface RoutingService {
   resolve(argument: { profile: Profile; map: ModelMap; models: ModelsArgument; requestedModel: string }): { chain?: Assignment[]; notices?: RoutingNotice[] } & Refusable;
   outcome(argument: { status: number; headers: Record<string, string>; now: number }): { rateLimited: boolean; resetAt?: number };
   limits(argument: Record<string, never>): { maxRequestBytes: number };
-  environment(argument: { profile: Profile; map: ModelMap; port: number; providersEnabled: boolean; environment: Record<string, string>; userHome: string }): { environment: Record<string, string> };
+  environment(argument: { profile: Profile; map: ModelMap; port: number; providersEnabled: boolean; environment: Record<string, string>; userHome: string; application: ApplicationProxy }): { environment: Record<string, string> };
 }
 
 export const Routing: ServiceType<RoutingService> = { id: "routing" };

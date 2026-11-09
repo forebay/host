@@ -10,16 +10,13 @@ function withoutHopByHop(headers: IncomingHttpHeaders, alsoDropped: readonly str
   return Object.fromEntries(Object.entries(headers).filter(([name, value]) => value !== undefined && !HOP_BY_HOP.has(name) && !alsoDropped.includes(name)));
 }
 
-/** The authorization `routing.environment` hands an application served by providers: no credential, so no upstream is ever sent it. */
-const PLACEHOLDER_AUTHORIZATION = "Bearer sk-ant-loader-proxy";
-
-function withoutPlaceholder(headers: OutgoingHttpHeaders): OutgoingHttpHeaders {
-  return headers.authorization === PLACEHOLDER_AUTHORIZATION ? Object.fromEntries(Object.entries(headers).filter(([name]) => name !== "authorization")) : headers;
+function withoutPlaceholder(headers: OutgoingHttpHeaders, placeholderAuthorization: string): OutgoingHttpHeaders {
+  return headers.authorization === placeholderAuthorization ? Object.fromEntries(Object.entries(headers).filter(([name]) => name !== "authorization")) : headers;
 }
 
 /** @implNote The body is sent buffered, so its length is known and replaces whatever framing the application used. */
-function forwardedHeaders(request: BufferedRequest, upstream: URL): OutgoingHttpHeaders {
-  return { ...withoutPlaceholder(withoutHopByHop(request.headers, ["host", "content-length"])), host: upstream.host, "content-length": String(request.body.length) };
+function forwardedHeaders(request: BufferedRequest, upstream: URL, placeholderAuthorization: string): OutgoingHttpHeaders {
+  return { ...withoutPlaceholder(withoutHopByHop(request.headers, ["host", "content-length"]), placeholderAuthorization), host: upstream.host, "content-length": String(request.body.length) };
 }
 
 function targetPath(upstream: URL, url: string): string {
@@ -40,12 +37,12 @@ function failed(response: ServerResponse, upstream: URL, error: unknown): void {
  * Forwards a request no chain entry serves to the profile's upstream: the method, path, headers and
  * body as the application sent them, and the upstream's answer back as it came.
  */
-export function passThrough(request: BufferedRequest, upstream: string, response: ServerResponse, signal: AbortSignal): Promise<void> {
+export function passThrough(request: BufferedRequest, upstream: string, placeholderAuthorization: string, response: ServerResponse, signal: AbortSignal): Promise<void> {
   const target = new URL(upstream);
   const send = target.protocol === "https:" ? httpsRequest : httpRequest;
   return new Promise((resolve) => {
     const outgoing = send(
-      { protocol: target.protocol, hostname: target.hostname, port: target.port, method: request.method, path: targetPath(target, request.url), headers: forwardedHeaders(request, target), signal },
+      { protocol: target.protocol, hostname: target.hostname, port: target.port, method: request.method, path: targetPath(target, request.url), headers: forwardedHeaders(request, target, placeholderAuthorization), signal },
       (incoming) => {
         response.writeHead(incoming.statusCode ?? BAD_GATEWAY, withoutHopByHop(incoming.headers, []));
         incoming.pipe(response);

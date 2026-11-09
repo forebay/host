@@ -43,6 +43,8 @@ export interface ProxyState {
   providers: Map<string, ProviderCalls>;
   routing: Pick<RoutingService, "resolve" | "outcome" | "limits">;
   profile: Profile;
+  /** The authorization an application holding only its declared placeholder sends: no credential, so no upstream is ever sent it. */
+  placeholderAuthorization: string;
   checks: ContractChecks;
   snapshot(): RoutingSnapshot;
   /** Asks the providers for their models again, as a request finding no model does before it is refused. */
@@ -227,9 +229,9 @@ async function chainAfterRederive(state: ProxyState, request: IrRequest): Promis
  * configured providers a user must never get silently.
  */
 async function routed(state: ProxyState, request: BufferedRequest, response: ServerResponse, signal: AbortSignal): Promise<void> {
-  if (state.providers.size === 0) return passThrough(request, state.profile.upstream, response, signal);
+  if (state.providers.size === 0) return passThrough(request, state.profile.upstream, state.placeholderAuthorization, response, signal);
   const decoded = await state.frontDoor.decodeRequest({ method: request.method, path: request.url, headers: flatHeaders(request.headers), body: request.body.toString("utf8") });
-  if (isPassThrough(decoded)) return passThrough(request, state.profile.upstream, response, signal);
+  if (isPassThrough(decoded)) return passThrough(request, state.profile.upstream, state.placeholderAuthorization, response, signal);
   if (isFailure(decoded)) {
     writeReply(response, decoded);
     return;
