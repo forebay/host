@@ -27,6 +27,7 @@ import type { ProcessTimer } from "./process-timer.js";
 import { registeredIdentity } from "./registered-identity.js";
 import { checkInWorker } from "./update-check.js";
 import { startUpdateTimer } from "./update-timer.js";
+import type { ApplicationProxy } from "../loader-standard.js";
 import type { UpdateTimer } from "./update-timer.js";
 
 type Applied = ReturnType<UpdatesService["apply"]>;
@@ -241,6 +242,7 @@ function proxyOf(started: Started, running: RunningHost, options: JavascriptHost
     publisher: readyPublisher(runtime, places.state, identity.id),
     environment: options.environment,
     userHome: started.userHome,
+    application: identity.application?.proxy as ApplicationProxy | undefined,
     log: scopedLogger(runtime, scope, new Date().toISOString(), activityPublisher(running.events, "proxy")),
   });
 }

@@ -9,11 +9,18 @@ import { currentPlatformKey } from "@weivel/typescript/host";
 import { bundlePlugin } from "../build/bundle-plugin.js";
 import { openRuntime, siblingRuntime } from "../runtime/open.js";
 import { userHomeOf } from "../user-home.js";
+import type { ApplicationProxy } from "../loader-standard.js";
+import type { RegistryService } from "../runtime/types.js";
 import { REPOSITORY_ROOT } from "./context.js";
 import { builtCatalog, environmentUnder, runForebayHost } from "./javascript-host-world.js";
 import { pluginRepository } from "./plugin-repository.js";
 
 export const SESSION_HOST = "forebay-host";
+export const APPLICATION_PROXY: ApplicationProxy = {
+  baseUrlVariable: "FIXTURE_BASE_URL",
+  placeholder: { variable: "FIXTURE_AUTH_TOKEN", value: "fixture-placeholder" },
+  ownLogin: { variables: ["FIXTURE_API_KEY"] },
+};
 export const FRONT_DOOR = "fixture-front-door";
 export const PROVIDERS = ["provider-a", "provider-b"];
 
@@ -104,6 +111,19 @@ export function hostSettingsFile(world: ProxyWorld): string {
   }
 }
 
+/** Sets what the session host's registration says its application declares, or takes the application away. */
+export function declareApplication(world: ProxyWorld, proxy: ApplicationProxy | undefined): void {
+  const runtime = openRuntime(siblingRuntime(REPOSITORY_ROOT));
+  try {
+    const places = runtime.places.resolve({ home: userHomeOf(world.environment), environment: world.environment });
+    const { application: _replaced, ...registration } = runtime.registry.get({ places, id: SESSION_HOST }).registration as Record<string, unknown>;
+    const application = proxy === undefined ? {} : { application: { id: "fixture", proxy } };
+    (runtime.registry as unknown as RegistryService).register({ places, registration: { ...registration, ...application } as never });
+  } finally {
+    runtime.close();
+  }
+}
+
 /**
  * Records a run of the session host from this live process, as a session running beside the test
  * would, answering what removes it again.
@@ -131,6 +151,7 @@ export async function installedProxyWorld(): Promise<ProxyWorld> {
   const hostEntry = join(environment.SPISOR_CACHE as string, "bundles", "javascript-host", javascriptHostVersion, "host.js");
   const world = { base, environment, state, hostEntry, providerLog: join(base, "provider.log"), port: await freePort() };
   setHostSetting(world, "proxy.port", world.port);
+  declareApplication(world, APPLICATION_PROXY);
   return world;
 }
 
