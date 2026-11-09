@@ -52,6 +52,7 @@ describe("forebay/library opened from its declaration", () => {
     expect(map.opus?.[0]).toMatchObject({ provider: "provider-a", model: "claude-opus-1" });
     expect(library.routing.resolve({ profile: PROFILE, map, models: MODELS, requestedModel: "claude-opus-1" }).chain?.[0]?.model).toBe("claude-opus-1");
     expect(library.routing.outcome({ status: 429, headers: {}, now: NOW })).toEqual({ rateLimited: true });
+    expect(library.routing.limits({}).maxRequestBytes).toBe(64 * 1024 * 1024);
     const environment = library.routing.environment({ profile: PROFILE, map, port: 40001, providersEnabled: false, environment: {}, userHome: join(base, "home") });
     expect(environment.environment).toEqual({ ANTHROPIC_BASE_URL: "http://127.0.0.1:40001" });
   });

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DecodeRequestAnswer, IrFailure, IrRequest, ModelsAnswer, PassThrough, Profile } from "../contracts/index.js";
 import type { Assignment, ModelMap, ModelsArgument, RoutingService } from "../forebay-library/types.js";
-import { bufferedRequest, flatHeaders } from "./buffered-request.js";
+import { bufferedRequest, flatHeaders, RequestTooLarge } from "./buffered-request.js";
 import type { BufferedRequest } from "./buffered-request.js";
 import type { ContractChecks } from "./contracts.js";
 import type { FrontDoorCalls } from "./front-door.js";
@@ -13,6 +13,7 @@ import { relayStream } from "./stream.js";
 
 const HEALTH_PATH = "/health";
 const FORBIDDEN = 403;
+const CONTENT_TOO_LARGE = 413;
 const BAD_GATEWAY = 502;
 const INTERNAL_ERROR = 500;
 const SERVICE_UNAVAILABLE = 503;
@@ -40,7 +41,7 @@ export interface ProxyState {
   settingsFile: string;
   frontDoor: FrontDoorCalls;
   providers: Map<string, ProviderCalls>;
-  routing: Pick<RoutingService, "resolve" | "outcome">;
+  routing: Pick<RoutingService, "resolve" | "outcome" | "limits">;
   profile: Profile;
   checks: ContractChecks;
   snapshot(): RoutingSnapshot;
@@ -241,6 +242,13 @@ async function routed(state: ProxyState, request: BufferedRequest, response: Ser
   return servedByChain(state, decoded, chain, response, signal);
 }
 
+/** @implNote The rest of the body is read and dropped, since closing over unread data resets the connection and destroys this answer. */
+function refuseTooLarge(incoming: IncomingMessage, response: ServerResponse, refusal: RequestTooLarge): void {
+  incoming.resume();
+  response.setHeader("connection", "close");
+  writeProxyError(response, CONTENT_TOO_LARGE, refusal.message);
+}
+
 /**
  * Answers one request to the proxy: `/health`, the providers' models on `/v1/models`, and every
  * other request decoded by the front door, routed by `routing.resolve` and served by the chain.
@@ -262,9 +270,13 @@ export async function handleRequest(state: ProxyState, incoming: IncomingMessage
       writeModels(response, path, state.snapshot().answers, state.profile);
       return;
     }
-    await routed(state, await bufferedRequest(incoming), response, disconnect.signal);
+    await routed(state, await bufferedRequest(incoming, state.routing.limits({}).maxRequestBytes), response, disconnect.signal);
   } catch (error) {
     if (disconnect.signal.aborted) return;
+    if (error instanceof RequestTooLarge) {
+      refuseTooLarge(incoming, response, error);
+      return;
+    }
     state.log.warn(`a request failed: ${messageOf(error)}`);
     writeProxyError(response, INTERNAL_ERROR, messageOf(error));
   }

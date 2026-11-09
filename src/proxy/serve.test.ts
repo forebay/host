@@ -182,6 +182,17 @@ describe("the session host serving an enabled front door", () => {
     expect(await rawStatus({ host: `127.0.0.1:${world.port}` })).toBe(200);
   });
 
+  it("answers 413 and closes the connection for a request declaring more than routing.limits allows, without waiting for its body", async () => {
+    const reply = await new Promise<IncomingMessage>((resolve, reject) => {
+      const outgoing = httpRequest(url("/v1/messages"), { method: "POST", headers: { "content-length": String(64 * 1024 * 1024 + 1) } }, resolve);
+      outgoing.on("error", reject);
+      outgoing.flushHeaders();
+    });
+    reply.resume();
+    expect(reply.statusCode).toBe(413);
+    expect(reply.headers.connection).toBe("close");
+  });
+
   it("lists every model the providers answered on /v1/models", async () => {
     const listed = (await (await fetch(url("/v1/models"))).json()) as { data: Array<{ id: string; max_input_tokens: number }> };
     expect(listed.data.map((model) => model.id)).toEqual(expect.arrayContaining(["provider-a-ok", "provider-b-stream"]));
