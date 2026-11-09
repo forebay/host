@@ -144,7 +144,7 @@ function stopperOf(server: Server, models: RoutingModels): () => Promise<void> {
 
 function declaredProxy(session: ProxySession, frontDoorId: string): ApplicationProxy {
   if (session.application !== undefined) return session.application;
-  throw new ProxyRefusal(`the front door ${frontDoorId} is enabled, but the registration of ${session.hostId} declares no proxy`, `${REINSTALL_FIX}, which records the application.proxy the installed loader declares`);
+  throw new ProxyRefusal(`the front door ${frontDoorId} is enabled, but the application of ${session.hostId} declares no proxy`, `disable ${frontDoorId}, or declare application.proxy in the loader standard of ${session.hostId}`);
 }
 
 async function served(session: ProxySession, front: { pluginId: string; implementation: FrontDoor }): Promise<ProxyServer> {
