@@ -5,14 +5,14 @@ import type { LibraryDeclaration, LoadedLibrary } from "@weivel/typescript/host"
 import { libraryBinaryName, libraryDirectory } from "../runtime/cached-runtime.js";
 import type { AccountsService, AppsService, RoutingService } from "./types.js";
 
-export const FOREBAY_LIBRARY_ID = "apps";
+export const FOREBAY_LIBRARY_ID = "forebay-library";
 
 const DECLARATION_FILE = "library.json";
 const CONTRACTS_FOLDER = "contracts";
 
 type LibraryContextProvider = NonNullable<Parameters<typeof openLibrary>[2]>;
 
-/** Where `forebay/library` is: its declaration, the folder its binary is in, and its contract schemas. */
+/** Where `forebay-library` is: its declaration, the folder its binary is in, and its contract schemas. */
 export interface ForebayLibrarySource {
   declarationPath: string;
   binaryDirectory: string;
@@ -34,7 +34,7 @@ export interface ForebayLibrary {
   close(): void;
 }
 
-/** The `apps` library at `version` in the cache, laid out as `catalog build --library apps=<folder>` placed it. */
+/** `forebay-library` at `version` in the cache, laid out as `catalog build --library forebay-library=<folder>` placed it. */
 export function cachedForebayLibrary(cache: string, version: string, platformKey: string = currentPlatformKey()): ForebayLibrarySource {
   const directory = libraryDirectory(cache, FOREBAY_LIBRARY_ID, version, platformKey);
   return { declarationPath: join(directory, DECLARATION_FILE), binaryDirectory: directory, contractsDirectory: join(directory, CONTRACTS_FOLDER) };
@@ -66,7 +66,7 @@ function servicesFrom(library: LoadedLibrary, declaration: LibraryDeclaration): 
   return servicesOf(library, declaration).map(({ id, implementation }) => ({ id, implementation }));
 }
 
-/** Opens `forebay/library`, answering the context its `apps` functions declare from `context`. */
+/** Opens `forebay-library`, answering the context its `apps` functions declare from `context`. */
 export function openForebayLibrary(source: ForebayLibrarySource, context: LibraryContextProvider): ForebayLibrary {
   const declaration = parseDeclaration(readFileSync(source.declarationPath, "utf8"));
   const library = openLibrary(join(source.binaryDirectory, libraryBinaryName(declaration.binary, currentPlatformKey())), declaration, context);
@@ -81,7 +81,7 @@ export function openForebayLibrary(source: ForebayLibrarySource, context: Librar
   };
 }
 
-/** The services a plugin reaches `forebay/library` through, under the ids its declaration gives them. */
+/** The services a plugin reaches `forebay-library` through, under the ids its declaration gives them. */
 export function forebayLibraryServices(library: ForebayLibrary): HostService[] {
   return library.services;
 }

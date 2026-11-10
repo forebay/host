@@ -3,7 +3,7 @@ import type { Profile } from "../contracts/index.js";
 import type { ApplicationProxy } from "../loader-standard.js";
 
 /**
- * The services `forebay/library`'s `library.json` declares, written by hand.
+ * The services `forebay-library`'s `library.json` declares, written by hand.
  *
  * @implNote Not generated: weivel/typescript's generator refuses a `type` array such as
  * `["string", "null"]` (`nativeModelPattern`) and `["number", "null"]` (`expires`). `open.test.ts`

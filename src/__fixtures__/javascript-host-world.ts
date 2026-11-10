@@ -46,13 +46,13 @@ function stagedRuntimeLibrary(stage: string): string {
   return directory;
 }
 
-/** The apps library as a catalog folder: its declaration, its binary and its contract schemas. */
+/** forebay-library as a catalog folder: its declaration, its binary and its contract schemas. */
 function stagedForebayLibrary(stage: string, platform: string): string {
   const source = siblingForebayLibrary(REPOSITORY_ROOT);
-  const directory = join(stage, "apps");
+  const directory = join(stage, "forebay-library");
   mkdirSync(directory, { recursive: true });
   copyFileSync(source.declarationPath, join(directory, "library.json"));
-  const binary = libraryBinaryName("apps", platform);
+  const binary = libraryBinaryName("forebay_library", platform);
   copyFileSync(join(source.binaryDirectory, binary), join(directory, binary));
   cpSync(source.contractsDirectory, join(directory, "contracts"), { recursive: true });
   return directory;
@@ -117,7 +117,7 @@ export async function builtCatalog(base: string, platform: string, plugins: stri
     "--library",
     `koffi=${koffi}@${platform}`,
     "--library",
-    `apps=${stagedForebayLibrary(stage, platform)}@${platform}`,
+    `forebay-library=${stagedForebayLibrary(stage, platform)}@${platform}`,
     "--out",
     catalog,
   ]);
