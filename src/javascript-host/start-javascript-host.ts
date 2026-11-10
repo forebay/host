@@ -76,7 +76,7 @@ interface Started {
 
 /** What this process runs beside the host's plugins: the host, the javascript-host bundle and the libraries it loaded. */
 function runningOf(layer: CachedLayer, identity: HostIdentity, libraryVersion: string): Record<string, string> {
-  return { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi, apps: libraryVersion };
+  return { [identity.id]: identity.version, [LAYER_ID]: layer.version, runtime: layer.libraries.runtime, koffi: layer.libraries.koffi, [FOREBAY_LIBRARY_ID]: libraryVersion };
 }
 
 /**
