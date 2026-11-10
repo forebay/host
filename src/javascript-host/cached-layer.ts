@@ -50,11 +50,11 @@ export function cachedLayerOf(bundleFile: string): CachedLayer {
 }
 
 /**
- * The `apps` library the javascript-host's boot hint names, read through `boot.read` once the
+ * The `forebay-library` the javascript-host's boot hint names, read through `boot.read` once the
  * runtime the hint also names is open.
  */
 export function hintedForebayLibrary(runtime: Pick<Runtime, "boot">, layer: CachedLayer): { version: string; source: ForebayLibrarySource } {
   const version = runtime.boot.read({ cache: layer.cache, hostId: LAYER_ID }).hint?.libraries[FOREBAY_LIBRARY_ID];
-  if (version === undefined) throw new HostRefusal(`no ${FOREBAY_LIBRARY_ID} library is hinted for the ${LAYER_ID} in ${layer.cache}`, REINSTALL_FIX);
+  if (version === undefined) throw new HostRefusal(`no ${FOREBAY_LIBRARY_ID} is hinted for the ${LAYER_ID} in ${layer.cache}`, REINSTALL_FIX);
   return { version, source: cachedForebayLibrary(layer.cache, version) };
 }

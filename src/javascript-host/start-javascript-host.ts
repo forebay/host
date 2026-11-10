@@ -132,7 +132,7 @@ function reportUnrecorded(hostId: string, unrecorded: Applied["unrecorded"], wri
   for (const { message, fix } of unrecorded) writeError(`spisor could not record part of the start of ${hostId}: ${message}\nfix: ${fix}\n`);
 }
 
-/** Opens the `apps` library the boot hint names, its `apps` functions answering from the host's environment and the user's home. */
+/** Opens `forebay-library` as the boot hint names it, its `apps` functions answering from the host's environment and the user's home. */
 function openedLibrary(runtime: Runtime, layer: CachedLayer, options: JavascriptHostOptions, userHome: string): { library: ForebayLibrary; version: string } {
   const { version, source } = hintedForebayLibrary(runtime, layer);
   return { version, library: openForebayLibrary(source, () => ({ environment: options.environment, home: userHome, arguments: [] })) };
