@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { activityPublisher } from "../context/activity.js";
 import { scopedLogger } from "../context/log.js";
 import type { HostPlaces } from "../context/places.js";
-import { forebayLibraryServices, openForebayLibrary } from "../forebay-library/open.js";
+import { FOREBAY_LIBRARY_ID, forebayLibraryServices, openForebayLibrary } from "../forebay-library/open.js";
 import type { ForebayLibrary } from "../forebay-library/open.js";
 import { hostSettings } from "../host-settings.js";
 import type { HostIdentity } from "../identity.js";
