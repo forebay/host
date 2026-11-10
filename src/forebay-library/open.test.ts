@@ -34,7 +34,7 @@ afterAll(() => {
   rmSync(base, { recursive: true, force: true });
 });
 
-describe("forebay/library opened from its declaration", () => {
+describe("forebay-library opened from its declaration", () => {
   it("offers apps, routing and accounts as host services", () => {
     expect(forebayLibraryServices(library).map((service) => service.id)).toEqual(["apps", "routing", "accounts"]);
   });

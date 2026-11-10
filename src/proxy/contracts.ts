@@ -5,7 +5,7 @@ import type { ValidateFunction } from "ajv";
 
 const SCHEMA_FILES = ["ir.schema.json", "front-door.schema.json", "provider.schema.json"];
 
-/** The definitions a plugin answer is checked against, by the name `forebay/library`'s contracts give them. */
+/** The definitions a plugin answer is checked against, by the name `forebay-library`'s contracts give them. */
 export type ContractDefinition =
   | "ProfileAnswer"
   | "DecodeRequestAnswer"
@@ -44,7 +44,7 @@ function validatorsOf(contractsDirectory: string): Map<string, ValidateFunction>
   return validators;
 }
 
-/** The checks for the contract schemas in `contractsDirectory`, the `contracts` folder of the opened `forebay/library`. */
+/** The checks for the contract schemas in `contractsDirectory`, the `contracts` folder of the opened `forebay-library`. */
 export function contractChecks(contractsDirectory: string): ContractChecks {
   const validators = validatorsOf(contractsDirectory);
   const validatorFor = (definition: ContractDefinition) => {

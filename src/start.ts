@@ -32,7 +32,7 @@ export interface HostOptions {
   defaults?: Record<string, string>;
   environment?: Record<string, string>;
   surfaces?: string[];
-  /** Services the host offers every plugin beside what plugins register, such as `forebay/library`'s. */
+  /** Services the host offers every plugin beside what plugins register, such as `forebay-library`'s. */
   services?: HostService[];
 }
 
