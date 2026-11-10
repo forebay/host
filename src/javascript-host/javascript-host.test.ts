@@ -91,18 +91,18 @@ describe("the javascript-host bundle", () => {
     expect(record?.fix).toBe("run forebay-host install --catalog <path or url> again");
   });
 
-  it("publishes the refusal of a start whose boot hint names no apps library", () => {
+  it("publishes the refusal of a start whose boot hint names no forebay-library", () => {
     const hint = join(world.cache, "hosts", "javascript-host.json");
     const original = readFileSync(hint, "utf8");
-    const { apps, ...rest } = (JSON.parse(original) as { libraries: Record<string, string> }).libraries;
-    expect(apps).toBeDefined();
+    const { "forebay-library": forebayLibrary, ...rest } = (JSON.parse(original) as { libraries: Record<string, string> }).libraries;
+    expect(forebayLibrary).toBeDefined();
     writeFileSync(hint, JSON.stringify({ ...JSON.parse(original), libraries: rest }));
     try {
       const run = runNode(world, [world.hostEntry, SESSION_HOST]);
       expect(run.status).toBe(1);
-      expect(run.stderr).toContain("no apps library is hinted");
+      expect(run.stderr).toContain("no forebay-library is hinted");
       const record = readyRecordOf(SESSION_HOST);
-      expect(String(record?.refused)).toContain("no apps library is hinted");
+      expect(String(record?.refused)).toContain("no forebay-library is hinted");
       expect(record?.fix).toBe("run forebay-host install --catalog <path or url> again");
       expect(record?.environment).toBeUndefined();
     } finally {
