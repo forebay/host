@@ -17,7 +17,7 @@ jobs:
         spisor/library siblings/library 004a16b0e601327732dee63fea8f76fdfcc5d3a9
         forebay/forebay-library siblings/forebay-library 6fd0245f7bfbca794fe8b832b48c1eeb043f32fb
       node_install: npm ci --prefix siblings/model && npm ci --prefix siblings/typescript && npm ci
-      node_build: cmake -S siblings/library -B siblings/library/build && cmake --build siblings/library/build --config Release && cmake -S siblings/forebay-library -B siblings/forebay-library/build && cmake --build siblings/forebay-library/build --config Release --target apps && npm run build --prefix siblings/typescript && npm run build
+      node_build: cmake -S siblings/library -B siblings/library/build && cmake --build siblings/library/build --config Release && cmake -S siblings/forebay-library -B siblings/forebay-library/build && cmake --build siblings/forebay-library/build --config Release --target forebay_library && npm run build --prefix siblings/typescript && npm run build
       node_test: npm test
       cmake_configure: '-S siblings/library -B siblings/library/build'
       cmake_build: '--build siblings/library/build --config Release'
